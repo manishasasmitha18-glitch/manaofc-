@@ -5275,7 +5275,7 @@ async function connectToWA() {
     });
 
     manaofc.ev.on("connection.update", async (update) => {
-        const { ection, lastDisconnect } = update;
+        const { connection, lastDisconnect } = update;
         if (connection === "close") {
             if (lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut) {
                 connectToWA();
@@ -5334,7 +5334,7 @@ process.on("uncaughtException", function (err) {
     let e = String(err);
     if (e.includes("manaofc connection timeout")) return;
     if (e.includes("rate-overlimit")) return;
-    if (e.includes("ection Closed")) return;
+    if (e.includes("Connection Closed")) return;
     if (e.includes("Value not found")) return;
     if (e.includes("Authentication timed out")) restart();
     console.log("Caught exception: ", err);
