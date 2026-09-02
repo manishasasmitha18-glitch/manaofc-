@@ -75,6 +75,8 @@ function restart() {
     process.exit(1);
 }
 
+const configFilePath = path.join(__dirname, "manaofc", "config.json");
+
 async function loadUserConfig(botNumber) {
     try {
         const configDir = path.join(__dirname, 'manaofc');
@@ -100,6 +102,8 @@ async function updateUserConfig(botNumber, updates) {
 }
 
 //===================SESSION============================
+const sessionPath = path.join(__dirname, "file", "session")
+
 if (!fs.existsSync(path.join(sessionPath, 'creds.json'))) {
   if (defaultConfig.SESSION_ID) {
     const sessdata = defaultConfig.SESSION_ID;
