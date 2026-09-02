@@ -5,6 +5,9 @@ const cheerio = require('cheerio');
 const yts = require('yt-search');
 const { File } = require('megajs');
 const express = require('express');
+const app = express();
+const port = process.env.PORT || 3000;
+
 const fs = require('fs-extra');
 const path = require('path');
 const { promisify } = require('util');
