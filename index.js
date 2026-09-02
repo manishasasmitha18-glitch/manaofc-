@@ -558,7 +558,7 @@ const defaultSettings = {
     BOT_MODE: 'public',
     ANTIDELETE: 'true',
     ANTICALL: 'false',
-    BOT_NAME: 'MANAOFC LITE',
+    BOT_NAME: 'MANISHA-MD',
     FOOTER: '> _*Powered By Manaofc*_',
     ANTICALL_MSG: '📵 Calls are not allowed! Please send a message instead.',
     NON_BUTTON: false
@@ -836,6 +836,857 @@ function cmd(info, func) {
 }
 
 // ========== COMMANDS ==========
+// ==================== GAMES MENU ====================
+cmd({
+    pattern: "games",
+    react: "🎮",
+    desc: "AIRA ARCADE ZONE - Mini Games Menu",
+    category: "games",
+    use: ".games",
+    filename: __filename
+},
+async (manaofc, mek, m, { from, reply }) => {
+    try {
+        const menu = `
+╭─── *🎮 AIRA ARCADE ZONE 🎮* ───╮
+│
+│  *🕹️ Exclusive WhatsApp Mini Games Hub*
+│
+├─ *🎯 Action Games*
+│  • !doom  → Doom 3D (FPS Raycaster)
+│  • !space → Galaxy Wars (Space Shooter)
+│  • !dino  → Dino Runner (T-Rex Run)
+│
+├─ *🎰 Casino & Luck*
+│  • !slots → Fruit Slots (5-Reel Casino)
+│  • !wheel → Lucky Wheel (Spin & Win)
+│
+├─ *🧩 Classic Arcade*
+│  • !ttt   → Tic-Tac-Toe (Neon AI vs Player)
+│  • !flappy→ Flappy Aira (Retro Flying)
+│  • !snake → Cyber Snake (Classic D-Pad)
+│
+├─ *🎬 Entertainment*
+│  • !music → Music Jukebox (Polyphonic Synth)
+│  • !cinema→ Cyber Cinema (Canvas Film)
+│  • !sound → Sound Studio (Audio Synth)
+│
+╰─── *Type any command to play!* ───╯
+        `;
+
+        await manaofc.sendMessage(from, {
+            image: { url: "https://i.imgur.com/arcade_banner.png" },
+            caption: menu,
+            contextInfo: {
+                externalAdReply: {
+                    title: "🎮 AIRA ARCADE ZONE",
+                    body: "Exclusive WhatsApp Mini Games Hub",
+                    thumbnailUrl: "https://i.imgur.com/game_icon.png",
+                    sourceUrl: "https://github.com/",
+                    mediaType: 1,
+                    renderLargerThumbnail: true
+                }
+            }
+        }, { quoted: mek });
+
+    } catch (e) {
+        console.error(e);
+        reply("❌ *Failed to load games menu!*");
+    }
+});
+
+// ==================== TIC TAC TOE ====================
+cmd({
+    pattern: "ttt",
+    react: "❌",
+    desc: "Neon Tic-Tac-Toe vs AI",
+    category: "games",
+    use: ".ttt",
+    filename: __filename
+},
+async (manaofc, mek, m, { from, reply }) => {
+    try {
+        const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEON TIC-TAC-TOE</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { 
+    background: #0a0a1a; 
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    min-height: 100vh; 
+    font-family: 'Segoe UI', sans-serif;
+}
+.container { 
+    background: #1a1a3e; 
+    border: 2px solid #7b2cbf; 
+    border-radius: 20px; 
+    padding: 20px; 
+    box-shadow: 0 0 30px rgba(123,44,191,0.5);
+    max-width: 350px; 
+    width: 90%;
+}
+h1 { 
+    text-align: center; 
+    color: #c77dff; 
+    font-size: 1.5rem; 
+    margin-bottom: 10px; 
+    text-shadow: 0 0 10px #c77dff;
+}
+.scoreboard { 
+    display: flex; 
+    justify-content: space-around; 
+    margin-bottom: 15px; 
+}
+.score { 
+    background: #16213e; 
+    padding: 8px 15px; 
+    border-radius: 10px; 
+    text-align: center; 
+    color: #fff; 
+    font-size: 0.8rem;
+}
+.score span { 
+    display: block; 
+    font-size: 1.2rem; 
+    font-weight: bold; 
+}
+.board { 
+    display: grid; 
+    grid-template-columns: repeat(3, 1fr); 
+    gap: 8px; 
+    margin-bottom: 15px; 
+}
+.cell { 
+    aspect-ratio: 1; 
+    background: #0f3460; 
+    border: 2px solid #533483; 
+    border-radius: 12px; 
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    font-size: 2rem; 
+    font-weight: bold; 
+    cursor: pointer; 
+    transition: all 0.3s;
+}
+.cell:hover { 
+    background: #1a4a7a; 
+    transform: scale(1.05);
+}
+.cell.x { 
+    color: #00d9ff; 
+    text-shadow: 0 0 15px #00d9ff; 
+    border-color: #00d9ff;
+}
+.cell.o { 
+    color: #ff006e; 
+    text-shadow: 0 0 15px #ff006e; 
+    border-color: #ff006e;
+}
+.status { 
+    text-align: center; 
+    color: #fff; 
+    margin-bottom: 15px; 
+    font-size: 1rem;
+}
+.buttons { 
+    display: flex; 
+    gap: 10px; 
+}
+button { 
+    flex: 1; 
+    padding: 12px; 
+    border: none; 
+    border-radius: 10px; 
+    font-weight: bold; 
+    cursor: pointer; 
+    font-size: 0.9rem; 
+    transition: 0.3s;
+}
+.vs-ai { 
+    background: #16213e; 
+    color: #fff; 
+    border: 1px solid #533483;
+}
+.restart { 
+    background: #7b2cbf; 
+    color: #fff;
+}
+button:hover { 
+    transform: translateY(-2px); 
+    box-shadow: 0 5px 15px rgba(123,44,191,0.4);
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>NEON TIC-TAC-TOE</h1>
+    <div class="scoreboard">
+        <div class="score">PLAYER (X)<span id="scoreX">0</span></div>
+        <div class="score">TIES<span id="scoreTie">0</span></div>
+        <div class="score">AIRA (O)<span id="scoreO">0</span></div>
+    </div>
+    <div class="status" id="status">Tap any square to start!</div>
+    <div class="board" id="board">
+        <div class="cell" data-index="0"></div>
+        <div class="cell" data-index="1"></div>
+        <div class="cell" data-index="2"></div>
+        <div class="cell" data-index="3"></div>
+        <div class="cell" data-index="4"></div>
+        <div class="cell" data-index="5"></div>
+        <div class="cell" data-index="6"></div>
+        <div class="cell" data-index="7"></div>
+        <div class="cell" data-index="8"></div>
+    </div>
+    <div class="buttons">
+        <button class="vs-ai" onclick="resetGame()">VS AIRA 🤖</button>
+        <button class="restart" onclick="resetGame()">RESTART 🔄</button>
+    </div>
+</div>
+<script>
+let board = ['','','','','','','','',''];
+let currentPlayer = 'X';
+let gameActive = true;
+let scores = { X: 0, O: 0, tie: 0 };
+
+const winCombos = [
+    [0,1,2],[3,4,5],[6,7,8],
+    [0,3,6],[1,4,7],[2,5,8],
+    [0,4,8],[2,4,6]
+];
+
+document.querySelectorAll('.cell').forEach(cell => {
+    cell.addEventListener('click', () => {
+        const idx = cell.dataset.index;
+        if(board[idx] === '' && gameActive && currentPlayer === 'X') {
+            makeMove(idx, 'X');
+            if(gameActive) setTimeout(aiMove, 500);
+        }
+    });
+});
+
+function makeMove(idx, player) {
+    board[idx] = player;
+    const cell = document.querySelector('[data-index="'+idx+'"]');
+    cell.textContent = player;
+    cell.classList.add(player.toLowerCase());
+    checkWinner();
+    if(gameActive) {
+        currentPlayer = player === 'X' ? 'O' : 'X';
+        document.getElementById('status').textContent = currentPlayer === 'X' ? 'Your turn' : "Aira's turn... 🤖";
+    }
+}
+
+function aiMove() {
+    let bestScore = -Infinity;
+    let move;
+    for(let i=0; i<9; i++) {
+        if(board[i] === '') {
+            board[i] = 'O';
+            let score = minimax(board, 0, false);
+            board[i] = '';
+            if(score > bestScore) { bestScore = score; move = i; }
+        }
+    }
+    makeMove(move, 'O');
+}
+
+function minimax(board, depth, isMaximizing) {
+    let result = checkWin();
+    if(result !== null) return result === 'O' ? 10-depth : result === 'X' ? depth-10 : 0;
+
+    if(isMaximizing) {
+        let bestScore = -Infinity;
+        for(let i=0; i<9; i++) {
+            if(board[i] === '') {
+                board[i] = 'O';
+                let score = minimax(board, depth+1, false);
+                board[i] = '';
+                bestScore = Math.max(score, bestScore);
+            }
+        }
+        return bestScore;
+    } else {
+        let bestScore = Infinity;
+        for(let i=0; i<9; i++) {
+            if(board[i] === '') {
+                board[i] = 'X';
+                let score = minimax(board, depth+1, true);
+                board[i] = '';
+                bestScore = Math.min(score, bestScore);
+            }
+        }
+        return bestScore;
+    }
+}
+
+function checkWinner() {
+    let winner = checkWin();
+    if(winner !== null) {
+        gameActive = false;
+        if(winner === 'tie') {
+            scores.tie++;
+            document.getElementById('status').textContent = "🤝 It's a tie!";
+        } else {
+            scores[winner]++;
+            document.getElementById('status').textContent = winner === 'X' ? "🎉 You Win!" : "🤖 Aira Wins!";
+        }
+        updateScores();
+    }
+}
+
+function checkWin() {
+    for(let combo of winCombos) {
+        const [a,b,c] = combo;
+        if(board[a] && board[a] === board[b] && board[a] === board[c]) return board[a];
+    }
+    if(!board.includes('')) return 'tie';
+    return null;
+}
+
+function updateScores() {
+    document.getElementById('scoreX').textContent = scores.X;
+    document.getElementById('scoreO').textContent = scores.O;
+    document.getElementById('scoreTie').textContent = scores.tie;
+}
+
+function resetGame() {
+    board = ['','','','','','','','',''];
+    currentPlayer = 'X';
+    gameActive = true;
+    document.querySelectorAll('.cell').forEach(c => { c.textContent = ''; c.className = 'cell'; });
+    document.getElementById('status').textContent = 'Tap any square to start!';
+}
+</script>
+</body>
+</html>`;
+
+        const filePath = path.join(__dirname, 'ttt_game.html');
+        fs.writeFileSync(filePath, htmlContent);
+
+        await manaofc.sendMessage(from, {
+            document: fs.readFileSync(filePath),
+            mimetype: 'text/html',
+            fileName: 'NEON_TIC_TAC_TOE.html',
+            caption: '🎮 *NEON TIC-TAC-TOE*\n❌ You vs 🤖 Aira (AI)\n\n_Tap the file to play!_'
+        }, { quoted: mek });
+
+        fs.unlinkSync(filePath);
+
+    } catch (e) {
+        console.error(e);
+        reply("❌ *Failed to launch Tic-Tac-Toe!*");
+    }
+});
+
+// ==================== GALAXY SHOOTER ====================
+cmd({
+    pattern: "space",
+    react: "🚀",
+    desc: "Galaxy Wars - Space Alien Shooter",
+    category: "games",
+    use: ".space",
+    filename: __filename
+},
+async (manaofc, mek, m, { from, reply }) => {
+    try {
+        const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>GALAXY SHOOTER 🚀</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; overflow: hidden; }
+body { background: #050510; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: 'Segoe UI', sans-serif; }
+#gameContainer { position: relative; width: 100%; max-width: 400px; height: 100vh; max-height: 700px; background: #0a0a1a; border: 2px solid #9d4edd; border-radius: 15px; overflow: hidden; }
+#canvas { display: block; width: 100%; height: 100%; }
+#ui { position: absolute; top: 0; left: 0; right: 0; padding: 15px; display: flex; justify-content: space-between; color: #fff; font-weight: bold; font-size: 1rem; z-index: 10; }
+#startScreen, #gameOverScreen { position: absolute; inset: 0; background: rgba(5,5,16,0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 20; }
+#startScreen h1, #gameOverScreen h1 { color: #c77dff; font-size: 2rem; margin-bottom: 10px; text-shadow: 0 0 20px #c77dff; }
+#startScreen p, #gameOverScreen p { color: #aaa; margin-bottom: 20px; }
+.btn { padding: 15px 40px; background: #7b2cbf; color: #fff; border: none; border-radius: 25px; font-size: 1.1rem; font-weight: bold; cursor: pointer; box-shadow: 0 0 20px rgba(123,44,191,0.5); transition: 0.3s; }
+.btn:hover { transform: scale(1.05); box-shadow: 0 0 30px rgba(123,44,191,0.8); }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+    <div id="ui">
+        <div>SCORE: <span id="score">0</span></div>
+        <div>LIVES: <span id="lives">❤️❤️❤️</span></div>
+    </div>
+    <canvas id="canvas"></canvas>
+    <div id="startScreen">
+        <h1>GALAXY SHOOTER 🚀</h1>
+        <p>Drag ship to Move & Shoot Aliens!</p>
+        <button class="btn" onclick="startGame()">LAUNCH FIGHTER 🛸</button>
+    </div>
+    <div id="gameOverScreen" class="hidden">
+        <h1>GAME OVER</h1>
+        <p>Final Score: <span id="finalScore">0</span></p>
+        <button class="btn" onclick="resetGame()">TRY AGAIN 🔄</button>
+    </div>
+</div>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H, animationId, score, lives, gameRunning;
+let player, bullets, enemies, particles, stars;
+
+function resize() {
+    const container = document.getElementById('gameContainer');
+    W = canvas.width = container.clientWidth;
+    H = canvas.height = container.clientHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+class Player {
+    constructor() { this.w = 40; this.h = 40; this.x = W/2 - this.w/2; this.y = H - 80; this.speed = 5; }
+    draw() {
+        ctx.fillStyle = '#00d9ff';
+        ctx.shadowBlur = 15; ctx.shadowColor = '#00d9ff';
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.w/2, this.y);
+        ctx.lineTo(this.x + this.w, this.y + this.h);
+        ctx.lineTo(this.x + this.w/2, this.y + this.h - 10);
+        ctx.lineTo(this.x, this.y + this.h);
+        ctx.closePath();
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+    update() {
+        if(touchX !== null) {
+            this.x += (touchX - this.x - this.w/2) * 0.15;
+        }
+        this.x = Math.max(0, Math.min(W - this.w, this.x));
+    }
+}
+
+class Bullet {
+    constructor(x, y) { this.x = x; this.y = y; this.w = 4; this.h = 15; this.speed = 8; }
+    draw() {
+        ctx.fillStyle = '#00d9ff';
+        ctx.shadowBlur = 10; ctx.shadowColor = '#00d9ff';
+        ctx.fillRect(this.x - this.w/2, this.y, this.w, this.h);
+        ctx.shadowBlur = 0;
+    }
+    update() { this.y -= this.speed; }
+}
+
+class Enemy {
+    constructor(x, y, type) {
+        this.x = x; this.y = y; this.w = 35; this.h = 35; this.type = type;
+        this.speedX = (Math.random() - 0.5) * 2;
+        this.speedY = 0.5 + Math.random() * 1;
+        this.colors = ['#ff006e', '#fb5607', '#ffbe0b', '#8338ec', '#3a86ff'];
+    }
+    draw() {
+        ctx.fillStyle = this.colors[this.type % this.colors.length];
+        ctx.shadowBlur = 10; ctx.shadowColor = ctx.fillStyle;
+        ctx.beginPath();
+        ctx.arc(this.x + this.w/2, this.y + this.h/2, this.w/2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(this.x + this.w/2 - 6, this.y + this.h/2 - 3, 4, 0, Math.PI * 2);
+        ctx.arc(this.x + this.w/2 + 6, this.y + this.h/2 - 3, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+    update() {
+        this.x += this.speedX;
+        this.y += this.speedY;
+        if(this.x <= 0 || this.x >= W - this.w) this.speedX *= -1;
+    }
+}
+
+class Particle {
+    constructor(x, y, color) {
+        this.x = x; this.y = y; this.vx = (Math.random() - 0.5) * 6;
+        this.vy = (Math.random() - 0.5) * 6; this.life = 1;
+        this.color = color;
+    }
+    draw() {
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, 3, 3);
+        ctx.globalAlpha = 1;
+    }
+    update() { this.x += this.vx; this.y += this.vy; this.life -= 0.02; }
+}
+
+class Star {
+    constructor() { this.x = Math.random() * W; this.y = Math.random() * H; this.size = Math.random() * 2; this.speed = Math.random() * 2 + 0.5; }
+    draw() { ctx.fillStyle = '#fff'; ctx.globalAlpha = Math.random() * 0.5 + 0.3; ctx.fillRect(this.x, this.y, this.size, this.size); ctx.globalAlpha = 1; }
+    update() { this.y += this.speed; if(this.y > H) { this.y = 0; this.x = Math.random() * W; } }
+}
+
+let touchX = null;
+canvas.addEventListener('touchmove', e => { e.preventDefault(); touchX = e.touches[0].clientX - canvas.getBoundingClientRect().left; }, {passive: false});
+canvas.addEventListener('touchstart', e => { e.preventDefault(); touchX = e.touches[0].clientX - canvas.getBoundingClientRect().left; fireBullet(); }, {passive: false});
+canvas.addEventListener('mousemove', e => { touchX = e.clientX - canvas.getBoundingClientRect().left; });
+canvas.addEventListener('mousedown', () => fireBullet());
+
+function fireBullet() {
+    if(!gameRunning) return;
+    bullets.push(new Bullet(player.x + player.w/2, player.y));
+}
+
+function createExplosion(x, y, color) {
+    for(let i=0; i<15; i++) particles.push(new Particle(x, y, color));
+}
+
+function spawnEnemies() {
+    if(Math.random() < 0.03) {
+        const cols = 6;
+        const x = Math.random() * (W - 40);
+        enemies.push(new Enemy(x, -40, Math.floor(Math.random() * 5)));
+    }
+}
+
+function checkCollisions() {
+    for(let i = bullets.length - 1; i >= 0; i--) {
+        for(let j = enemies.length - 1; j >= 0; j--) {
+            const b = bullets[i], e = enemies[j];
+            if(b && e && b.x > e.x && b.x < e.x + e.w && b.y > e.y && b.y < e.y + e.h) {
+                createExplosion(e.x + e.w/2, e.y + e.h/2, e.colors[e.type % e.colors.length]);
+                score += 20;
+                bullets.splice(i, 1);
+                enemies.splice(j, 1);
+                break;
+            }
+        }
+    }
+    for(let j = enemies.length - 1; j >= 0; j--) {
+        const e = enemies[j];
+        if(e.y > H) { enemies.splice(j, 1); continue; }
+        if(e.x < player.x + player.w && e.x + e.w > player.x && e.y < player.y + player.h && e.y + e.h > player.y) {
+            createExplosion(player.x + player.w/2, player.y + player.h/2, '#00d9ff');
+            lives--; enemies.splice(j, 1);
+            if(lives <= 0) endGame();
+        }
+    }
+}
+
+function updateUI() {
+    document.getElementById('score').textContent = score;
+    document.getElementById('lives').textContent = '❤️'.repeat(Math.max(0, lives));
+}
+
+function gameLoop() {
+    if(!gameRunning) return;
+    ctx.fillStyle = '#050510'; ctx.fillRect(0, 0, W, H);
+    stars.forEach(s => { s.update(); s.draw(); });
+    player.update(); player.draw();
+    bullets.forEach((b, i) => { b.update(); b.draw(); if(b.y < 0) bullets.splice(i, 1); });
+    enemies.forEach(e => { e.update(); e.draw(); });
+    particles.forEach((p, i) => { p.update(); p.draw(); if(p.life <= 0) particles.splice(i, 1); });
+    spawnEnemies(); checkCollisions(); updateUI();
+    animationId = requestAnimationFrame(gameLoop);
+}
+
+function startGame() {
+    document.getElementById('startScreen').classList.add('hidden');
+    player = new Player(); bullets = []; enemies = []; particles = []; stars = [];
+    for(let i=0; i<50; i++) stars.push(new Star());
+    score = 0; lives = 3; gameRunning = true;
+    gameLoop();
+}
+
+function endGame() {
+    gameRunning = false;
+    cancelAnimationFrame(animationId);
+    document.getElementById('finalScore').textContent = score;
+    document.getElementById('gameOverScreen').classList.remove('hidden');
+}
+
+function resetGame() {
+    document.getElementById('gameOverScreen').classList.add('hidden');
+    startGame();
+}
+</script>
+</body>
+</html>`;
+
+        const filePath = path.join(__dirname, 'galaxy_shooter.html');
+        fs.writeFileSync(filePath, htmlContent);
+
+        await manaofc.sendMessage(from, {
+            document: fs.readFileSync(filePath),
+            mimetype: 'text/html',
+            fileName: 'GALAXY_SHOOTER.html',
+            caption: '🚀 *GALAXY SHOOTER*\n👾 Destroy alien invaders!\n\n_Tap the file to play!_'
+        }, { quoted: mek });
+
+        fs.unlinkSync(filePath);
+
+    } catch (e) {
+        console.error(e);
+        reply("❌ *Failed to launch Galaxy Shooter!*");
+    }
+});
+
+// ==================== DINO RUNNER ====================
+cmd({
+    pattern: "dino",
+    react: "🦖",
+    desc: "Dino Runner - Chrome T-Rex Run",
+    category: "games",
+    use: ".dino",
+    filename: __filename
+},
+async (manaofc, mek, m, { from, reply }) => {
+    try {
+        const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>NIXEL DINO - Dino Runner 🦖</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; overflow: hidden; }
+body { background: #1a1a1a; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: 'Courier New', monospace; }
+#gameContainer { position: relative; width: 100%; max-width: 400px; height: 100vh; max-height: 250px; background: #2d5a3d; border: 3px solid #1a3c2a; border-radius: 10px; overflow: hidden; }
+#canvas { display: block; width: 100%; height: 100%; }
+#ui { position: absolute; top: 10px; right: 15px; color: #fff; font-size: 1.2rem; font-weight: bold; z-index: 10; text-shadow: 2px 2px 0 #000; }
+#best { position: absolute; top: 10px; left: 15px; color: #fff; font-size: 0.9rem; z-index: 10; text-shadow: 1px 1px 0 #000; }
+#gameOver { position: absolute; inset: 0; background: rgba(0,0,0,0.7); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 20; }
+#gameOver h1 { color: #fff; font-size: 1.5rem; margin-bottom: 10px; }
+#gameOver p { color: #aaa; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+    <div id="best">BEST <span id="bestScore">00000</span></div>
+    <div id="ui"><span id="score">00000</span></div>
+    <canvas id="canvas"></canvas>
+    <div id="gameOver">
+        <h1>GAME OVER</h1>
+        <p>Tap Screen to Restart</p>
+    </div>
+</div>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H, gameLoop, score, bestScore = localStorage.getItem('dinoBest') || 0, speed, gameOver;
+let dino, obstacles, clouds, groundY;
+
+function resize() {
+    const container = document.getElementById('gameContainer');
+    W = canvas.width = container.clientWidth;
+    H = canvas.height = container.clientHeight;
+    groundY = H - 30;
+}
+window.addEventListener('resize', resize);
+resize();
+document.getElementById('bestScore').textContent = String(bestScore).padStart(5, '0');
+
+class Dino {
+    constructor() { this.w = 30; this.h = 40; this.x = 50; this.y = groundY - this.h; this.vy = 0; this.gravity = 0.8; this.jumpPower = -14; this.grounded = true; this.legFrame = 0; }
+    jump() { if(this.grounded) { this.vy = this.jumpPower; this.grounded = false; } }
+    update() {
+        this.vy += this.gravity; this.y += this.vy;
+        if(this.y >= groundY - this.h) { this.y = groundY - this.h; this.vy = 0; this.grounded = true; }
+        if(!this.grounded) this.legFrame = 0; else this.legFrame += 0.2;
+    }
+    draw() {
+        ctx.fillStyle = '#fff';
+        // Body
+        ctx.fillRect(this.x + 8, this.y, 14, 20);
+        // Head
+        ctx.fillRect(this.x + 14, this.y - 10, 16, 14);
+        // Eye
+        ctx.fillStyle = '#2d5a3d'; ctx.fillRect(this.x + 24, this.y - 6, 3, 3); ctx.fillStyle = '#fff';
+        // Legs
+        if(Math.floor(this.legFrame) % 2 === 0) {
+            ctx.fillRect(this.x + 8, this.y + 20, 6, 12);
+            ctx.fillRect(this.x + 16, this.y + 20, 6, 10);
+        } else {
+            ctx.fillRect(this.x + 8, this.y + 20, 6, 10);
+            ctx.fillRect(this.x + 16, this.y + 20, 6, 12);
+        }
+        // Tail
+        ctx.fillRect(this.x, this.y + 5, 10, 6);
+    }
+}
+
+class Obstacle {
+    constructor() {
+        this.w = 20 + Math.random() * 15;
+        this.h = 30 + Math.random() * 20;
+        this.x = W + this.w;
+        this.y = groundY - this.h;
+        this.type = Math.random() > 0.5 ? 'cactus' : 'rock';
+    }
+    update() { this.x -= speed; }
+    draw() {
+        if(this.type === 'cactus') {
+            ctx.fillStyle = '#e76f51';
+            ctx.fillRect(this.x + this.w/3, this.y, this.w/3, this.h);
+            ctx.fillRect(this.x, this.y + this.h/3, this.w/3, this.h/4);
+            ctx.fillRect(this.x + this.w*2/3, this.y + this.h/4, this.w/3, this.h/4);
+        } else {
+            ctx.fillStyle = '#6c757d';
+            ctx.fillRect(this.x, this.y + 10, this.w, this.h - 10);
+        }
+    }
+}
+
+class Cloud {
+    constructor() { this.x = W + 50; this.y = Math.random() * (H/2); this.w = 40 + Math.random() * 30; this.speed = 0.5 + Math.random() * 0.5; }
+    update() { this.x -= this.speed; }
+    draw() { ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fillRect(this.x, this.y, this.w, 12); ctx.fillRect(this.x + 10, this.y - 8, this.w - 20, 10); }
+}
+
+function drawGround() {
+    ctx.strokeStyle = '#1a3c2a'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, groundY); ctx.lineTo(W, groundY); ctx.stroke();
+    for(let i=0; i<W; i+=20) { const offset = (i - (score * speed * 0.1)) % 20; ctx.fillStyle = '#1a3c2a'; ctx.fillRect(i - offset, groundY + 5, 4, 4); }
+}
+
+function spawnObstacle() {
+    if(Math.random() < 0.015 && (obstacles.length === 0 || W - obstacles[obstacles.length-1].x > 200)) {
+        obstacles.push(new Obstacle());
+    }
+}
+
+function checkCollisions() {
+    for(let obs of obstacles) {
+        if(dino.x + dino.w - 5 > obs.x + 5 && dino.x + 5 < obs.x + obs.w - 5 && dino.y + dino.h - 5 > obs.y + 5) {
+            endGame(); return;
+        }
+    }
+}
+
+function update() {
+    if(gameOver) return;
+    ctx.fillStyle = '#2d5a3d'; ctx.fillRect(0, 0, W, H);
+    clouds.forEach((c, i) => { c.update(); c.draw(); if(c.x < -c.w) clouds.splice(i, 1); });
+    if(Math.random() < 0.01) clouds.push(new Cloud());
+    drawGround();
+    dino.update(); dino.draw();
+    obstacles.forEach((o, i) => { o.update(); o.draw(); if(o.x < -o.w) obstacles.splice(i, 1); });
+    spawnObstacle(); checkCollisions();
+    score++; speed = 5 + Math.floor(score / 500);
+    document.getElementById('score').textContent = String(score).padStart(5, '0');
+    gameLoop = requestAnimationFrame(update);
+}
+
+function startGame() {
+    dino = new Dino(); obstacles = []; clouds = []; score = 0; speed = 5; gameOver = false;
+    document.getElementById('gameOver').style.display = 'none';
+    for(let i=0; i<5; i++) { let c = new Cloud(); c.x = Math.random() * W; clouds.push(c); }
+    update();
+}
+
+function endGame() {
+    gameOver = true; cancelAnimationFrame(gameLoop);
+    if(score > bestScore) { bestScore = score; localStorage.setItem('dinoBest', bestScore); document.getElementById('bestScore').textContent = String(bestScore).padStart(5, '0'); }
+    document.getElementById('gameOver').style.display = 'flex';
+}
+
+function reset() { if(gameOver) startGame(); else dino.jump(); }
+
+document.addEventListener('keydown', e => { if(e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); reset(); } });
+canvas.addEventListener('touchstart', e => { e.preventDefault(); reset(); }, {passive: false});
+canvas.addEventListener('mousedown', reset);
+
+startGame();
+</script>
+</body>
+</html>`;
+
+        const filePath = path.join(__dirname, 'dino_runner.html');
+        fs.writeFileSync(filePath, htmlContent);
+
+        await manaofc.sendMessage(from, {
+            document: fs.readFileSync(filePath),
+            mimetype: 'text/html',
+            fileName: 'NIXEL_DINO_RUNNER.html',
+            caption: '🦖 *NIXEL DINO RUNNER*\n🏃 Jump over obstacles!\n\n_Tap the file to play!_'
+        }, { quoted: mek });
+
+        fs.unlinkSync(filePath);
+
+    } catch (e) {
+        console.error(e);
+        reply("❌ *Failed to launch Dino Runner!*");
+    }
+});
+
+// ==================== EXTRA GAME PLACEHOLDERS ====================
+const gameCommands = [
+    { pattern: "flappy", react: "🐥", name: "Flappy Aira", desc: "Retro Arcade Flying", color: "#FFD700" },
+    { pattern: "snake", react: "🐍", name: "Cyber Snake", desc: "Classic D-Pad Snake", color: "#32CD32" },
+    { pattern: "slots", react: "🎰", name: "Fruit Slots", desc: "5-Reel Casino Slots", color: "#FF6347" },
+    { pattern: "wheel", react: "🎡", name: "Lucky Wheel", desc: "Spin & Win Jackpots", color: "#FF69B4" },
+    { pattern: "music", react: "🎵", name: "Music Jukebox", desc: "Polyphonic Synth & Vis", color: "#9370DB" },
+    { pattern: "cinema", react: "🎬", name: "Cyber Cinema", desc: "Animated Canvas Film", color: "#20B2AA" },
+    { pattern: "sound", react: "🔊", name: "Sound Studio", desc: "Audio Synth & Melody", color: "#87CEEB" },
+    { pattern: "doom", react: "💥", name: "Doom 3D", desc: "3D FPS Raycaster", color: "#DC143C" }
+];
+
+gameCommands.forEach(game => {
+    cmd({
+        pattern: game.pattern,
+        react: game.react,
+        desc: game.name + " - " + game.desc,
+        category: "games",
+        use: "." + game.pattern,
+        filename: __filename
+    },
+    async (manaofc, mek, m, { from, reply }) => {
+        try {
+            const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${game.name} ${game.react}</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a1a; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: 'Segoe UI', sans-serif; }
+.container { text-align: center; padding: 40px; background: #1a1a3e; border: 2px solid ${game.color}; border-radius: 20px; box-shadow: 0 0 30px ${game.color}40; }
+h1 { color: ${game.color}; font-size: 2rem; margin-bottom: 10px; text-shadow: 0 0 20px ${game.color}; }
+p { color: #aaa; margin-bottom: 20px; }
+.coming-soon { color: #fff; font-size: 1.2rem; padding: 20px; border: 2px dashed ${game.color}; border-radius: 10px; }
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>${game.name} ${game.react}</h1>
+    <p>${game.desc}</p>
+    <div class="coming-soon">🚧 Full game coming soon! 🚧<br><br>Try:<br>!ttt - Tic-Tac-Toe<br>!space - Galaxy Shooter<br>!dino - Dino Runner</div>
+</div>
+</body>
+</html>`;
+
+            const filePath = path.join(__dirname, game.pattern + '_game.html');
+            fs.writeFileSync(filePath, htmlContent);
+
+            await manaofc.sendMessage(from, {
+                document: fs.readFileSync(filePath),
+                mimetype: 'text/html',
+                fileName: game.name.replace(/\s/g, '_') + '.html',
+                caption: `${game.react} *${game.name}*\n${game.desc}\n\n_Tap the file to preview!_`
+            }, { quoted: mek });
+
+            fs.unlinkSync(filePath);
+
+        } catch (e) {
+            console.error(e);
+            reply(`❌ *Failed to launch ${game.name}!*`);
+        }
+    });
+});
 //====================================
 //====== SETTINGS COMMAND =============
 //=====================================
