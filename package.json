@@ -1,0 +1,36 @@
+{
+  "name": "manaofc-lite",
+  "version": "1.0.0",
+  "description": " WhatsApp Bot with Multi-Number Support",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "manaofc-baileys": "github:manaofc/manaofc-baileys",
+    "express": "latest",
+    "fs-extra": "latest",
+    "pino": "latest",
+    "jimp": "latest",
+    "@octokit/rest": "latest",
+    "child_process": "latest",
+    "util": "latest",
+    "yt-search": "latest",
+    "os": "latest",
+    "path": "latest",
+    "pino": "latest",
+    "axios": "latest",
+    "node-fetch": "latest",
+    "moment-timezone": "latest",
+    "crypto": "latest",
+    "cheerio": "latest",
+    "megajs": "latest"
+  },
+  "engines": {
+    "node": ">=18.x"
+  },
+  "keywords": [],
+  "author": "manaofc",
+  "license": "MIT"
+}
