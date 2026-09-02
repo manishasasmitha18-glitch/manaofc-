@@ -20,7 +20,7 @@ const fetch = (...args) =>
   import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
 const {
-  default: makeWASocket,
+  default: makeWAmanaofc,
   getAggregateVotesInPollMessage,
   useMultiFileAuthState,
   DisconnectReason,
@@ -65,48 +65,23 @@ function getSriLankaTimestamp() {
     return moment().tz('Asia/Colombo').format('YYYY-MM-DD HH:mm:ss');
 }
 
-const defaultConfig = require("./config");
+const config = Object.assign({}, require("./config"), process.env);
 
 // Environment & runtime helpers
-const config = process.env;
 const usePairingCode = process.env.PAIRING_CODE === 'true';
 function restart() {
     console.log("Restarting bot...");
     process.exit(1);
 }
 
-const configFilePath = path.join(__dirname, "manaofc", "config.json");
 
-async function loadUserConfig(botNumber) {
-    try {
-        const configDir = path.join(__dirname, 'manaofc');
-        if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
-        if (!fs.existsSync(configFilePath)) return { ...defaultConfig };
-        const data = JSON.parse(fs.readFileSync(configFilePath, 'utf8'));
-        return { ...defaultConfig, ...data };
-    } catch (e) {
-        console.error('loadUserConfig error:', e);
-        return { ...defaultConfig };
-    }
-}
-
-async function updateUserConfig(botNumber, updates) {
-    try {
-        const configDir = path.join(__dirname, 'manaofc');
-        if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
-        const current = await loadUserConfig(botNumber);
-        fs.writeFileSync(configFilePath, JSON.stringify({ ...current, ...updates }, null, 2));
-    } catch (e) {
-        console.error('updateUserConfig error:', e);
-    }
-}
 
 //===================SESSION============================
 const sessionPath = path.join(__dirname, "file", "session")
 
 if (!fs.existsSync(path.join(sessionPath, 'creds.json'))) {
-  if (defaultConfig.SESSION_ID) {
-    const sessdata = defaultConfig.SESSION_ID;
+  if (config.SESSION_ID) {
+    const sessdata = config.SESSION_ID;
     const filer = File.fromURL(`https://mega.nz/file/${sessdata}`);
     filer.download((err, data) => {
       if (err) {
@@ -120,7 +95,7 @@ if (!fs.existsSync(path.join(sessionPath, 'creds.json'))) {
   }
 }
 
-// Anti-delete message store (keep last 500 messages per socket)
+// Anti-delete message store (keep last 500 messages per manaofc)
 const messageStore = new Map();
 const MAX_STORED_MESSAGES = 500;
 
@@ -160,7 +135,7 @@ function deleteStoredMessage(key) {
 }
 
 // ========== LID -> REAL NUMBER RESOLVER ==========
-async function resolveRealNumber(socket, jid, messageKey, chatJid) {
+async function resolveRealNumber(manaofc, jid, messageKey, chatJid) {
     try {
         const alt = (messageKey && (messageKey.senderPn || messageKey.participantAlt || messageKey.remoteJidAlt)) || null;
         if (alt && !alt.endsWith('@lid')) {
@@ -174,13 +149,13 @@ async function resolveRealNumber(socket, jid, messageKey, chatJid) {
 
         if (isLid) {
             try {
-                const pn = await socket.signalRepository.lidMapping.getPNForLID(cleanJid);
+                const pn = await manaofc.signalRepository.lidMapping.getPNForLID(cleanJid);
                 if (pn) return '+' + jidNormalizedUser(pn).split('@')[0].split(':')[0];
             } catch (e) { }
 
             if (chatJid && chatJid.endsWith('@g.us')) {
                 try {
-                    const metadata = await socket.groupMetadata(chatJid);
+                    const metadata = await manaofc.groupMetadata(chatJid);
                     const match = (metadata.participants || []).find(p =>
                         (p.id && jidNormalizedUser(p.id) === cleanJid) ||
                         (p.lid && jidNormalizedUser(p.lid) === cleanJid)
@@ -206,8 +181,8 @@ async function resolveRealNumber(socket, jid, messageKey, chatJid) {
 }
 
 // ========== ANTICALL HELPERS ==========
-async function handleAntiCall(socket, json, userConfig) {
-    if (userConfig.ANTICALL !== 'true') return;
+async function handleAntiCall(manaofc, json, config) {
+    if (config.ANTICALL !== 'true') return;
 
     try {
         const callerId = json[0][2][0][1].from;
@@ -215,17 +190,17 @@ async function handleAntiCall(socket, json, userConfig) {
         const callStatus = json[0][2][0][2][0][1];
 
         if (callStatus === 'offer') {
-            await socket.rejectCall(callId, callerId);
+            await manaofc.rejectCall(callId, callerId);
 
-            const anticallMsg = userConfig.ANTICALL_MSG || defaultConfig.ANTICALL_MSG;
-            await socket.sendMessage(callerId, { 
+            const anticallMsg = config.ANTICALL_MSG || config.ANTICALL_MSG;
+            await manaofc.sendMessage(callerId, { 
                 text: "> _*Powered By Manaofc*_ ⚡\n\n*╭━━━━━━━✧༺♥༻✧━━━━━━━*\n📵 *Anti-Call Activated*\n*╰━━━━━━━✧༺♥༻✧━━━━━━━*\n\n" + anticallMsg + "\n\n⏰ " + getSriLankaTimestamp()
             });
 
-            const botUserJid = jidNormalizedUser(socket.user.id);
-            const callerNumber = await resolveRealNumber(socket, callerId);
+            const botUserJid = jidNormalizedUser(manaofc.user.id);
+            const callerNumber = await resolveRealNumber(manaofc, callerId);
             if (botUserJid) {
-                await socket.sendMessage(botUserJid, {
+                await manaofc.sendMessage(botUserJid, {
                     text: "> _*Powered By Manaofc*_ ⚡\n\n*╭━━━━━━━✧༺♥༻✧━━━━━━━*\n🚨 *Call Blocked!*\n📞 *Caller Number:* " + callerNumber + "\n⏰ Time: " + getSriLankaTimestamp() + "\n*╰━━━━━━━✧༺♥༻✧━━━━━━━*\n\n_Call was automatically rejected._"
                 });
             }
@@ -239,11 +214,11 @@ async function handleAntiCall(socket, json, userConfig) {
 
 
 // ========== STATUS HANDLERS ==========
-function setupStatusHandlers(socket, userConfig) {
+function setupStatusHandlers(manaofc, config) {
     let lastStatusInteraction = 0;
     const STATUS_INTERACTION_COOLDOWN = 10000;
 
-    socket.ev.on('messages.upsert', async ({ messages }) => {
+    manaofc.ev.on('messages.upsert', async ({ messages }) => {
         const message = messages[0];
 
         if (
@@ -262,48 +237,48 @@ function setupStatusHandlers(socket, userConfig) {
 
         try {
             const from = message.key.remoteJid;
-            const presence = userConfig.PRESENCE;
+            const presence = config.PRESENCE;
 
             if (presence) {
                 if (presence === "composing") {
-                    await socket.sendPresenceUpdate("composing", from);
+                    await manaofc.sendPresenceUpdate("composing", from);
                 } else if (presence === "recording") {
-                    await socket.sendPresenceUpdate("recording", from);
+                    await manaofc.sendPresenceUpdate("recording", from);
                 } else if (presence === "unavailable") {
-                    await socket.sendPresenceUpdate("unavailable", from);
+                    await manaofc.sendPresenceUpdate("unavailable", from);
                 } else {
-                    await socket.sendPresenceUpdate("available", from);
+                    await manaofc.sendPresenceUpdate("available", from);
                 }
                 console.log(`Set ${presence} presence for ${from}`);
             }
 
-            if (userConfig.AUTO_VIEW_STATUS === 'true') {
-                let retries = parseInt(userConfig.MAX_RETRIES) || 3;
+            if (config.AUTO_VIEW_STATUS === 'true') {
+                let retries = parseInt(config.MAX_RETRIES) || 3;
                 while (retries > 0) {
                     try {
-                        await socket.readMessages([message.key]);
+                        await manaofc.readMessages([message.key]);
                         console.log(`Viewed status from ${message.key.participant}`);
                         break;
                     } catch (error) {
                         retries--;
                         console.warn(`Failed to read status, retries left: ${retries}`, error);
                         if (retries === 0) throw error;
-                        await delay(1000 * ((parseInt(userConfig.MAX_RETRIES) || 3) - retries));
+                        await delay(1000 * ((parseInt(config.MAX_RETRIES) || 3) - retries));
                     }
                 }
             }
 
-            if (userConfig.AUTO_LIKE_STATUS === 'true') {
-                const emojis = Array.isArray(userConfig.AUTO_LIKE_EMOJI)
-                    ? userConfig.AUTO_LIKE_EMOJI
-                    : defaultConfig.AUTO_LIKE_EMOJI;
+            if (config.AUTO_LIKE_STATUS === 'true') {
+                const emojis = Array.isArray(config.AUTO_LIKE_EMOJI)
+                    ? config.AUTO_LIKE_EMOJI
+                    : config.AUTO_LIKE_EMOJI;
 
                 const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-                let retries = parseInt(userConfig.MAX_RETRIES) || 3;
+                let retries = parseInt(config.MAX_RETRIES) || 3;
 
                 while (retries > 0) {
                     try {
-                        await socket.sendMessage(
+                        await manaofc.sendMessage(
                             from,
                             {
                                 react: {
@@ -322,7 +297,7 @@ function setupStatusHandlers(socket, userConfig) {
                         retries--;
                         console.warn(`Failed to react to status, retries left: ${retries}`, error);
                         if (retries === 0) throw error;
-                        await delay(1000 * ((parseInt(userConfig.MAX_RETRIES) || 3) - retries));
+                        await delay(1000 * ((parseInt(config.MAX_RETRIES) || 3) - retries));
                     }
                 }
             }
@@ -333,10 +308,10 @@ function setupStatusHandlers(socket, userConfig) {
 }
 
 // ========== ANTIDELETE HANDLER ==========
-function setupAntiDeleteHandler(socket, userConfig) {
-    if (userConfig.ANTIDELETE !== 'true') return;
+function setupAntiDeleteHandler(manaofc, config) {
+    if (config.ANTIDELETE !== 'true') return;
 
-    socket.ev.on('messages.upsert', async ({ messages }) => {
+    manaofc.ev.on('messages.upsert', async ({ messages }) => {
         for (const message of messages) {
             if (!message.key || !message.message) continue;
             if (message.key.remoteJid === 'status@broadcast') continue;
@@ -349,7 +324,7 @@ function setupAntiDeleteHandler(socket, userConfig) {
         }
     });
 
-    socket.ev.on('messages.update', async (updates) => {
+    manaofc.ev.on('messages.update', async (updates) => {
         for (const update of updates) {
             try {
                 const { key, update: updateData } = update;
@@ -360,12 +335,12 @@ function setupAntiDeleteHandler(socket, userConfig) {
                     if (storedMsg) {
                         const storedKey = storedMsg.key || key;
                         const senderJid = storedKey.participant || storedKey.remoteJid || key.participant || key.remoteJid;
-                        const deletedBy = key.fromMe ? 'You' : await resolveRealNumber(socket, senderJid, storedKey, key.remoteJid);
+                        const deletedBy = key.fromMe ? 'You' : await resolveRealNumber(manaofc, senderJid, storedKey, key.remoteJid);
                         const chatJid = key.remoteJid;
                         const isGroup = chatJid.endsWith('@g.us');
 
-                        const botUserJid = jidNormalizedUser(socket.user.id);
-                        const deletedByNumber = key.fromMe ? 'You' : await resolveRealNumber(socket, senderJid, storedKey, key.remoteJid);
+                        const botUserJid = jidNormalizedUser(manaofc.user.id);
+                        const deletedByNumber = key.fromMe ? 'You' : await resolveRealNumber(manaofc, senderJid, storedKey, key.remoteJid);
                         if (botUserJid) {
                             let notifyText = "> _*Powered By Manaofc*_ ⚡\n\n";
                             notifyText += "*╭━━━━━━━✧༺♥༻✧━━━━━━━*\n";
@@ -399,7 +374,7 @@ function setupAntiDeleteHandler(socket, userConfig) {
 
                             notifyText += "\n\n> _Message recovered by Anti-Delete_";
 
-                            await socket.sendMessage(botUserJid, { text: notifyText });
+                            await manaofc.sendMessage(botUserJid, { text: notifyText });
 
                             try {
                                 if (msgType === 'imageMessage' && msg.message.imageMessage.url) {
@@ -407,7 +382,7 @@ function setupAntiDeleteHandler(socket, userConfig) {
                                     let chunks = [];
                                     for await (const chunk of buffer) { chunks.push(chunk); }
                                     const imageBuffer = Buffer.concat(chunks);
-                                    await socket.sendMessage(botUserJid, {
+                                    await manaofc.sendMessage(botUserJid, {
                                         image: imageBuffer,
                                         caption: "> _*Powered By Manaofc*_ ⚡\n\n🗑️ *Deleted Image*\nFrom Number: " + deletedBy + "\nTime: " + getSriLankaTimestamp()
                                     });
@@ -416,7 +391,7 @@ function setupAntiDeleteHandler(socket, userConfig) {
                                     let chunks = [];
                                     for await (const chunk of buffer) { chunks.push(chunk); }
                                     const videoBuffer = Buffer.concat(chunks);
-                                    await socket.sendMessage(botUserJid, {
+                                    await manaofc.sendMessage(botUserJid, {
                                         video: videoBuffer,
                                         caption: "> _*Powered By Manaofc*_ ⚡\n\n🗑️ *Deleted Video*\nFrom Number: " + deletedBy + "\nTime: " + getSriLankaTimestamp()
                                     });
@@ -425,7 +400,7 @@ function setupAntiDeleteHandler(socket, userConfig) {
                                     let chunks = [];
                                     for await (const chunk of buffer) { chunks.push(chunk); }
                                     const audioBuffer = Buffer.concat(chunks);
-                                    await socket.sendMessage(botUserJid, {
+                                    await manaofc.sendMessage(botUserJid, {
                                         audio: audioBuffer,
                                         mimetype: 'audio/mp4',
                                         ptt: msg.message.audioMessage.ptt || false
@@ -435,7 +410,7 @@ function setupAntiDeleteHandler(socket, userConfig) {
                                     let chunks = [];
                                     for await (const chunk of buffer) { chunks.push(chunk); }
                                     const stickerBuffer = Buffer.concat(chunks);
-                                    await socket.sendMessage(botUserJid, {
+                                    await manaofc.sendMessage(botUserJid, {
                                         sticker: stickerBuffer
                                     });
                                 }
@@ -455,28 +430,28 @@ function setupAntiDeleteHandler(socket, userConfig) {
 }
 
 // ========== ANTICALL HANDLER ==========
-function setupAntiCallHandler(socket, userConfig) {
-    if (userConfig.ANTICALL !== 'true') return;
+function setupAntiCallHandler(manaofc, config) {
+    if (config.ANTICALL !== 'true') return;
 
-    socket.ws.on('CB:call', async (json) => {
-        await handleAntiCall(socket, json, userConfig);
+    manaofc.ws.on('CB:call', async (json) => {
+        await handleAntiCall(manaofc, json, config);
     });
 
-    socket.ev.on('call', async (calls) => {
+    manaofc.ev.on('call', async (calls) => {
         for (const call of calls) {
             try {
                 if (call.status === 'offer') {
-                    await socket.rejectCall(call.id, call.from);
+                    await manaofc.rejectCall(call.id, call.from);
 
-                    const anticallMsg = userConfig.ANTICALL_MSG || defaultConfig.ANTICALL_MSG;
-                    await socket.sendMessage(call.from, { 
+                    const anticallMsg = config.ANTICALL_MSG || config.ANTICALL_MSG;
+                    await manaofc.sendMessage(call.from, { 
                         text: "> _*Powered By Manaofc*_ ⚡\n\n*╭━━━━━━━✧༺♥༻✧━━━━━━━*\n📵 *Anti-Call Activated*\n*╰━━━━━━━✧༺♥༻✧━━━━━━━*\n\n" + anticallMsg + "\n\n⏰ " + getSriLankaTimestamp()
                     });
 
-                    const botUserJid = jidNormalizedUser(socket.user.id);
-                    const callerNumber2 = await resolveRealNumber(socket, call.from);
+                    const botUserJid = jidNormalizedUser(manaofc.user.id);
+                    const callerNumber2 = await resolveRealNumber(manaofc, call.from);
                     if (botUserJid) {
-                        await socket.sendMessage(botUserJid, {
+                        await manaofc.sendMessage(botUserJid, {
                             text: "> _*Powered By Manaofc*_ ⚡\n\n🚨 *Call Blocked!*\n\n📞 *Caller Number:* " + callerNumber2 + "\n⏰ Time: " + getSriLankaTimestamp() + "\n\n_Call was automatically rejected._"
                         });
                     }
@@ -491,26 +466,26 @@ function setupAntiCallHandler(socket, userConfig) {
 }
 
 // ========== AUTO STATUS SAVER ==========
-function setupAutoStatusSaver(socket, userConfig) {
-    if (userConfig.AUTO_STATUS_SAVER !== 'true') return;
+function setupAutoStatusSaver(manaofc, config) {
+    if (config.AUTO_STATUS_SAVER !== 'true') return;
 
-    socket.ev.on('messages.upsert', async ({ messages }) => {
+    manaofc.ev.on('messages.upsert', async ({ messages }) => {
         const message = messages[0];
         if (!message?.key || message.key.remoteJid !== 'status@broadcast' || !message.key.participant) return;
 
         try {
-            const botUserJid = jidNormalizedUser(socket.user.id);
+            const botUserJid = jidNormalizedUser(manaofc.user.id);
             if (!botUserJid) return;
 
             const msgType = getContentType(message.message);
-            const sender = await resolveRealNumber(socket, message.key.participant, message.key, message.key.remoteJid);
+            const sender = await resolveRealNumber(manaofc, message.key.participant, message.key, message.key.remoteJid);
             const caption = "> _*Powered By Manaofc*_ ⚡\n\n*╭━━━━━━━✧༺♥༻✧━━━━━━━*\n💾 *Auto Status Saved*\n👤 *From:* " + sender + "\n📂 *Type:* " + (msgType?.replace('Message', '') || 'Unknown') + "\n⏰ *Time:* " + getSriLankaTimestamp() + "\n*╰━━━━━━━✧༺♥༻✧━━━━━━━*";
 
             if (msgType === 'imageMessage') {
                 const buffer = await downloadContentFromMessage(message.message.imageMessage, 'image');
                 let chunks = [];
                 for await (const chunk of buffer) chunks.push(chunk);
-                await socket.sendMessage(botUserJid, {
+                await manaofc.sendMessage(botUserJid, {
                     image: Buffer.concat(chunks),
                     caption: caption
                 });
@@ -518,7 +493,7 @@ function setupAutoStatusSaver(socket, userConfig) {
                 const buffer = await downloadContentFromMessage(message.message.videoMessage, 'video');
                 let chunks = [];
                 for await (const chunk of buffer) chunks.push(chunk);
-                await socket.sendMessage(botUserJid, {
+                await manaofc.sendMessage(botUserJid, {
                     video: Buffer.concat(chunks),
                     caption: caption,
                     mimetype: 'video/mp4'
@@ -527,7 +502,7 @@ function setupAutoStatusSaver(socket, userConfig) {
                 const buffer = await downloadContentFromMessage(message.message.audioMessage, 'audio');
                 let chunks = [];
                 for await (const chunk of buffer) chunks.push(chunk);
-                await socket.sendMessage(botUserJid, {
+                await manaofc.sendMessage(botUserJid, {
                     audio: Buffer.concat(chunks),
                     mimetype: 'audio/mp4',
                     ptt: message.message.audioMessage.ptt || false
@@ -536,7 +511,7 @@ function setupAutoStatusSaver(socket, userConfig) {
                 const text = msgType === 'conversation' 
                     ? message.message.conversation 
                     : message.message.extendedTextMessage.text;
-                await socket.sendMessage(botUserJid, {
+                await manaofc.sendMessage(botUserJid, {
                     text: caption + "\n\n📝 *Text:*\n```" + text + "```"
                 });
             }
@@ -547,83 +522,303 @@ function setupAutoStatusSaver(socket, userConfig) {
 }
 
 
-// ========== DATABASE HELPERS ==========
+// ========== DATABASE HELPERS =============
+
 const basePath = path.join(__dirname, "buttondata");
+const settingsPath = path.join(basePath, "settings");
+const nonBtnPath = path.join(basePath, "Non-Btn");
+const settingsFile = path.join(settingsPath, "settings.json");
+const nonBtnFile = path.join(nonBtnPath, "data.json");
 
+// Create folders
 if (!fs.existsSync(basePath)) {
-  fs.mkdirSync(basePath);
+  fs.mkdirSync(basePath, { recursive: true });
 }
 
-if (!fs.existsSync(sessionPath)) {
-  fs.mkdirSync(sessionPath, { recursive: true });
+if (!fs.existsSync(settingsPath)) {
+  fs.mkdirSync(settingsPath, { recursive: true });
 }
 
-function ensureFolder(folder) {
-  const folderPath = path.join(basePath, folder);
-  if (!fs.existsSync(folderPath)) {
-    fs.mkdirSync(folderPath);
+if (!fs.existsSync(nonBtnPath)) {
+  fs.mkdirSync(nonBtnPath, { recursive: true });
+}
+
+// ================= DEFAULT SETTINGS =================
+
+const defaultSettings = {
+    AUTO_VIEW_STATUS: 'false',
+    AUTO_LIKE_STATUS: 'false',
+    PRESENCE: 'composing',
+    AUTO_LIKE_EMOJI: ['💥', '👍', '😍', '💗', '🎈', '🎉', '🥳', '😎', '🚀', '🔥'],
+    AUTO_STATUS_SAVER: 'false',
+    PREFIX: '.',
+    MAX_RETRIES: 3,
+    IMAGE_PATH: 'https://files.catbox.moe/i33owf.png',
+    OWNER_NUMBER: '+94759934522',
+    BOT_MODE: 'public',
+    ANTIDELETE: 'true',
+    ANTICALL: 'false',
+    BOT_NAME: 'MANAOFC LITE',
+    FOOTER: '> _*Powered By Manaofc*_',
+    ANTICALL_MSG: '📵 Calls are not allowed! Please send a message instead.',
+    NON_BUTTON: false
+};
+
+// ================= JSON FUNCTIONS =================
+
+function createJSON(file, data) {
+  try {
+    if (!fs.existsSync(file)) {
+      fs.writeFileSync(
+        file,
+        JSON.stringify(data, null, 2),
+        "utf8"
+      );
+    }
+  } catch (error) {
+    console.error("JSON create error:", error);
   }
 }
 
-function readJSON(folder, file, defaultData = []) {
-  ensureFolder(folder);
-  const filePath = path.join(basePath, folder, file);
+function readJSONFile(file, defaultData) {
+  try {
+    createJSON(file, defaultData);
 
-  if (!fs.existsSync(filePath)) {
-    fs.writeFileSync(filePath, JSON.stringify(defaultData, null, 2));
+    const data = fs.readFileSync(file, "utf8");
+
+    if (!data.trim()) {
+      return defaultData;
+    }
+
+    return JSON.parse(data);
+  } catch (error) {
+    console.error("JSON read error:", error);
     return defaultData;
   }
-
-  return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
-function writeJSON(folder, file, data) {
-  ensureFolder(folder);
-  const filePath = path.join(basePath, folder, file);
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+function writeJSONFile(file, data) {
+  try {
+    fs.writeFileSync(
+      file,
+      JSON.stringify(data, null, 2),
+      "utf8"
+    );
+
+    return true;
+  } catch (error) {
+    console.error("JSON write error:", error);
+    return false;
+  }
 }
 
-// ========== CMD STORE FUNCTIONS ==========
+// Create database files
+createJSON(settingsFile, defaultSettings);
+createJSON(nonBtnFile, []);
+
+// ================= CMD STORE FUNCTIONS =================
+
 async function updateCMDStore(MsgID, CmdID) {
   try {
-    let olds = readJSON("Non-Btn", "data.json", []);
-    olds.push({ [MsgID]: CmdID });
-    writeJSON("Non-Btn", "data.json", olds);
-    return true;
-  } catch (e) {
-    console.log(e);
+    const olds = readJSONFile(nonBtnFile, []);
+
+    olds.push({
+      [MsgID]: CmdID
+    });
+
+    return writeJSONFile(nonBtnFile, olds);
+  } catch (error) {
+    console.error("updateCMDStore error:", error);
     return false;
   }
 }
 
 async function isbtnID(MsgID) {
   try {
-    let olds = readJSON("Non-Btn", "data.json", []);
-    return olds.some((item) => item[MsgID]);
-  } catch {
+    const olds = readJSONFile(nonBtnFile, []);
+
+    return olds.some(
+      (item) =>
+        Object.prototype.hasOwnProperty.call(item, MsgID)
+    );
+  } catch (error) {
+    console.error("isbtnID error:", error);
     return false;
   }
 }
 
 async function getCMDStore(MsgID) {
   try {
-    let olds = readJSON("Non-Btn", "data.json", []);
+    const olds = readJSONFile(nonBtnFile, []);
+
     for (const item of olds) {
-      if (item[MsgID]) {
+      if (
+        Object.prototype.hasOwnProperty.call(item, MsgID)
+      ) {
         return item[MsgID];
       }
     }
+
     return null;
-  } catch (e) {
-    console.log(e);
+  } catch (error) {
+    console.error("getCMDStore error:", error);
     return null;
   }
 }
 
 function getCmdForCmdId(CMD_ID_MAP, cmdId) {
-  const result = CMD_ID_MAP.find((entry) => entry.cmdId === cmdId);
+  const result = CMD_ID_MAP.find(
+    (entry) => entry.cmdId === cmdId
+  );
+
   return result ? result.cmd : null;
 }
+
+// ================= DATABASE ECT =================
+
+async function connectdb() {
+  try {
+    createJSON(settingsFile, defaultSettings);
+    createJSON(nonBtnFile, []);
+
+    console.log("Local database connected 💜");
+    return true;
+  } catch (error) {
+    console.error("Database ection error:", error);
+    return false;
+  }
+}
+
+// ================= UPDATE SETTING =================
+
+async function input(setting, data) {
+  try {
+    const settings = readJSONFile(
+      settingsFile,
+      defaultSettings
+    );
+
+    if (!Object.prototype.hasOwnProperty.call(settings, setting)) {
+      console.warn(`Setting "${setting}" is not recognized.`);
+      return false;
+    }
+
+    settings[setting] = data;
+
+    // Update runtime config
+    config[setting] = data;
+
+    // Save locally
+    return writeJSONFile(settingsFile, settings);
+
+  } catch (error) {
+    console.error("input error:", error);
+    return false;
+  }
+}
+
+// ================= GET SETTING =================
+
+async function get(setting) {
+  try {
+    const settings = readJSONFile(
+      settingsFile,
+      defaultSettings
+    );
+
+    if (!Object.prototype.hasOwnProperty.call(settings, setting)) {
+      console.warn(`Setting "${setting}" is not recognized.`);
+      return null;
+    }
+
+    return settings[setting];
+
+  } catch (error) {
+    console.error("get error:", error);
+    return null;
+  }
+}
+
+// ================= UPDATE CONFIG =================
+
+// ================= UPDATE CONFIG =================
+
+async function updateDB() {
+  try {
+    const settings = readJSONFile(
+      settingsFile,
+      defaultSettings
+    );
+
+    // Update config from local database
+    config.AUTO_VIEW_STATUS = settings.AUTO_VIEW_STATUS;
+    config.AUTO_LIKE_STATUS = settings.AUTO_LIKE_STATUS;
+    config.AUTO_LIKE_EMOJI = settings.AUTO_LIKE_EMOJI;
+    config.AUTO_STATUS_SAVER = settings.AUTO_STATUS_SAVER;
+    config.MAX_RETRIES = Number(settings.MAX_RETRIES);
+    config.IMAGE_PATH = settings.IMAGE_PATH;
+    config.OWNER_NUMBER = settings.OWNER_NUMBER;
+    config.BOT_MODE = settings.BOT_MODE;
+    config.BOT_NAME = settings.BOT_NAME;
+    config.FOOTER = settings.FOOTER;
+    config.ANTICALL_MSG = settings.ANTICALL_MSG;
+    config.NON_BUTTON = settings.NON_BUTTON;
+    config.ANTIDELETE = settings.ANTIDELETE;
+    config.ANTICALL = settings.ANTICALL;
+
+    console.log("Local database updated ✅");
+
+    return true;
+
+  } catch (error) {
+    console.error("updb error:", error);
+    return false;
+  }
+}
+
+
+// ================= RESET DATABASE =================
+
+async function updfb() {
+  try {
+    writeJSONFile(
+      settingsFile,
+      defaultSettings
+    );
+
+    // Update runtime config
+    Object.keys(defaultSettings).forEach((key) => {
+      config[key] = defaultSettings[key];
+    });
+
+    config.MAX_SIZE = Number(defaultSettings.MAX_SIZE);
+
+    console.log("Local database reset ✅");
+
+    return true;
+
+  } catch (error) {
+    console.error("updfb error:", error);
+    return false;
+  }
+}
+
+// ================= RESET BUTTON DATABASE =================
+
+async function upresbtn() {
+  try {
+    writeJSONFile(nonBtnFile, []);
+
+    console.log("Button database cleared ✅");
+
+    return true;
+
+  } catch (error) {
+    console.error("upresbtn error:", error);
+    return false;
+  }
+}
+
 
 // ========== COMMAND REGISTRY ==========
 const commands = [];
@@ -654,12 +849,12 @@ cmd({
     use: ".settings",
     filename: __filename
 },
-async (socket, mek, m, { from, prefix, reply, isOwner, userConfig }) => {
+async (manaofc, mek, m, { from, prefix, reply, isOwner, config }) => {
     try {
         if (!isOwner) return reply("❌ *Only owner can use this!*");
 
-        const botNumber = socket.user.id.split(":")[0].split("@")[0];
-        const currentConfig = await loadUserConfig(botNumber);
+        const botNumber = manaofc.user.id.split(":")[0].split("@")[0];
+        // using global config
 
         const sections = [
             {
@@ -733,21 +928,21 @@ async (socket, mek, m, { from, prefix, reply, isOwner, userConfig }) => {
             },
         ];
 
-        const desc = `⚙️ \`${currentConfig.BOT_NAME || 'MANAOFC LITE'} SETTINGS\` ⚙️
+        const desc = `⚙️ \`${config.BOT_NAME || 'MANAOFC LITE'} SETTINGS\` ⚙️
 
 > ◈ *Owner:* manaofc
 > ◈ *Version:* ${version}
-> ◈ *Prefix:* ${currentConfig.PREFIX || '.'}
-> ◈ *Mode:* ${(currentConfig.BOT_MODE || 'public').toUpperCase()}`;
+> ◈ *Prefix:* ${config.PREFIX || '.'}
+> ◈ *Mode:* ${(config.BOT_MODE || 'public').toUpperCase()}`;
 
         let listset = {
             text: desc,
-            footer: userConfig.FOOTER || defaultConfig.FOOTER,
+            footer: config.FOOTER || config.FOOTER,
             //title: "",
             buttonText: "🖱️ button options cliq",
             sections,
         };
-        await socket.listMessage(from, listset, mek);
+        await manaofc.listMessage(from, listset, mek);
 
     } catch (e) {
         console.error(e);
@@ -762,12 +957,12 @@ cmd({
     dontAddCommandList: true,
     filename: __filename
 },
-async (socket, mek, m, { from, q, reply, isOwner, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, isOwner, config }) => {
     try {
         if (!isOwner) return reply("❌ *Only owner can use this!*");
 
-        const botNumber = socket.user.id.split(":")[0].split("@")[0];
-        const currentConfig = await loadUserConfig(botNumber);
+        const botNumber = manaofc.user.id.split(":")[0].split("@")[0];
+        // config already available
 
         if (!q) {
             return reply("❌ *Provide a value!*\nExample: `.set prefix !`");
@@ -781,7 +976,7 @@ async (socket, mek, m, { from, q, reply, isOwner, userConfig }) => {
             return reply("❌ *Provide a value!*\nExample: `.set prefix !`");
         }
 
-        const updates = { ...currentConfig };
+        const updates = { };
 
         switch (field) {
             case 'prefix':
@@ -826,7 +1021,9 @@ async (socket, mek, m, { from, q, reply, isOwner, userConfig }) => {
                 return reply("❌ *Unknown field!*\nTry: `.set prefix !`");
         }
 
-        await updateUserConfig(botNumber, updates);
+        for (const [key, value] of Object.entries(updates)) {
+            await input(key, value);
+        }
         reply(`✅ *Setting updated!*\n\n*${field}* → ${value}\n\n_Bot will apply changes immediately._`);
 
     } catch (e) {
@@ -847,59 +1044,59 @@ cmd(
     use: ".getconfig",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, isOwner }) => {
+async (manaofc, mek, m, { from, reply, isOwner }) => {
     try {
         if (!isOwner) {
             return reply("❌ *Only owner can use this command!*");
         }
 
-        const botNumber = socket.user.id.split(":")[0].split("@")[0];
-        const userConfig = await loadUserConfig(botNumber);
+        const botNumber = manaofc.user.id.split(":")[0].split("@")[0];
+        // config already available from outer scope
 
         let configText = "";
 
-      configText += `🤖 *${userConfig.BOT_NAME || defaultConfig.BOT_NAME}*\n\n`;
+      configText += `🤖 *${config.BOT_NAME || config.BOT_NAME}*\n\n`;
       configText += "📋 *CURRENT BOT CONFIGURATION* 📋\n\n";
       configText += `🔢 *Bot Number:* ${botNumber}\n`;
       configText += `⏰ *Time:* ${getSriLankaTimestamp()}\n\n`;
       configText += "*╭━━━━━━━✧༺♥༻✧━━━━━━━*\n";
-      configText += `*╎ 🔧 BOT_MODE:* ${(userConfig.BOT_MODE || "public").toUpperCase()}\n`;
+      configText += `*╎ 🔧 BOT_MODE:* ${(config.BOT_MODE || "public").toUpperCase()}\n`;
       configText += `*╎ 🎭 PRESENCE:* ${
-        userConfig.PRESENCE
-        ? userConfig.PRESENCE.toUpperCase()
+        config.PRESENCE
+        ? config.PRESENCE.toUpperCase()
         : "AVAILABLE"
       }\n`;
       configText += `*╎ 👁️ AUTO_VIEW_STATUS:* ${
-        userConfig.AUTO_VIEW_STATUS === "true" ? "✅ ON" : "❌ OFF"
+        config.AUTO_VIEW_STATUS === "true" ? "✅ ON" : "❌ OFF"
       }\n`;
       configText += `*╎ 🛟 AUTO_LIKE_STATUS:* ${
-        userConfig.AUTO_LIKE_STATUS === "true" ? "✅ ON" : "❌ OFF"
+        config.AUTO_LIKE_STATUS === "true" ? "✅ ON" : "❌ OFF"
       }\n`;
       configText += `*╎ 📱 AUTO_STATUS_SAVER:* ${
-        userConfig.AUTO_STATUS_SAVER === "true" ? "✅ ON" : "❌ OFF"
+        config.AUTO_STATUS_SAVER === "true" ? "✅ ON" : "❌ OFF"
       }\n`;
       configText += `*╎ 📞 ANTICALL:* ${
-        userConfig.ANTICALL === "true" ? "✅ ON" : "❌ OFF"
+        config.ANTICALL === "true" ? "✅ ON" : "❌ OFF"
       }\n`;
       configText += `*╎ 🗑️ ANTIDELETE:* ${
-        userConfig.ANTIDELETE === "true" ? "✅ ON" : "❌ OFF"
+        config.ANTIDELETE === "true" ? "✅ ON" : "❌ OFF"
       }\n`;
-      configText += `*╎ 🔤 PREFIX:* ${userConfig.PREFIX || "."}\n`;
+      configText += `*╎ 🔤 PREFIX:* ${config.PREFIX || "."}\n`;
       configText += `*╎ 🎨 LIKE_EMOJIS:* ${
-        Array.isArray(userConfig.AUTO_LIKE_EMOJI)
-        ? userConfig.AUTO_LIKE_EMOJI.join(" ")
-        : (userConfig.AUTO_LIKE_EMOJI || "❤️")
+        Array.isArray(config.AUTO_LIKE_EMOJI)
+        ? config.AUTO_LIKE_EMOJI.join(" ")
+        : (config.AUTO_LIKE_EMOJI || "❤️")
       }\n`;
       configText += `*╎ 🔘 NON_BUTTON:* ${
-        userConfig.NON_BUTTON === true ? "✅ ON (Text Mode)" : "❌ OFF (Button Mode)"
+        config.NON_BUTTON === true ? "✅ ON (Text Mode)" : "❌ OFF (Button Mode)"
       }\n`;
       configText += "*╰━━━━━━━✧༺♥༻✧━━━━━━━*";
       
-        await socket.sendMessage(
+        await manaofc.sendMessage(
             from,
             {
                 image: {
-                    url: userConfig.IMAGE_PATH || defaultConfig.IMAGE_PATH
+                    url: config.IMAGE_PATH || config.IMAGE_PATH
                 },
                 caption: configText
             },
@@ -928,7 +1125,7 @@ cmd({
   use: '.menu',
   filename: __filename
 },
-async(socket, mek, m,{from, prefix, pushname, reply, userConfig}) => {
+async(manaofc, mek, m,{from, prefix, pushname, reply, config}) => {
 try{
 if(os.hostname().length == 12 ) hostname = 'replit'
 else if(os.hostname().length == 36) hostname = 'heroku'
@@ -948,7 +1145,7 @@ const buttons = [
 {buttonId: prefix + 'mainmenu' , buttonText: {displayText: 'MAIN MENU'}, type: 1},
 ]
 const buttonMessage = {
-  image: userConfig.IMAGE_PATH || defaultConfig.IMAGE_PATH,
+  image: config.IMAGE_PATH || config.IMAGE_PATH,
   caption: `*👋 Hello ${pushname}*
 
 *╭━━━━━━━✧༺♥༻✧━━━━━━━*
@@ -958,11 +1155,11 @@ const buttonMessage = {
 *│◈ ʀᴀᴍ ᴜꜱᴀɢᴇ : ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)}MB / ${Math.round(require('os').totalmem / 1024 / 1024)}MB*
 *╰━━━━━━━✧༺♥༻✧━━━━━━━*
 `,
-  footer: userConfig.FOOTER || defaultConfig.FOOTER,
+  footer: config.FOOTER || config.FOOTER,
   buttons: buttons,
   headerType: 4
 }
-return await socket.buttonMessage(from, buttonMessage, mek)
+return await manaofc.buttonMessage(from, buttonMessage, mek)
 } catch (e) {
 reply('*Error !!*')
 console.log(e)
@@ -978,9 +1175,9 @@ cmd({
     dontAddCommandList: true,
     filename: __filename
 },
-async(socket, mek, m,{from, prefix, command, reply, userConfig}) => {
+async(manaofc, mek, m,{from, prefix, command, reply, config}) => {
 try{
-let menuc = `*📥 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} DOWNLOAD MENU. 📥*\n\n`
+let menuc = `*📥 ${config.BOT_NAME || config.BOT_NAME} DOWNLOAD MENU. 📥*\n\n`
 for (let i=0;i<commands.length;i++) { 
 if(commands[i].category === 'download'){
   if(!commands[i].dontAddCommandList){
@@ -998,13 +1195,13 @@ let generatebutton = [{
     type: 1
   }]
   let buttonMessaged = {
-    image: userConfig.IMAGE_PATH || defaultConfig.IMAGE_PATH,
+    image: config.IMAGE_PATH || config.IMAGE_PATH,
     caption: menuc,
-    footer: userConfig.FOOTER || defaultConfig.FOOTER,
+    footer: config.FOOTER || config.FOOTER,
     headerType: 4,
     buttons: generatebutton
   };
-  return await socket.buttonMessage(from, buttonMessaged, mek);
+  return await manaofc.buttonMessage(from, buttonMessaged, mek);
 } catch (e) {
   reply('*ERROR !!*')
   console.log(e)
@@ -1021,9 +1218,9 @@ cmd({
   dontAddCommandList: true,
   filename: __filename
 },
-async(socket, mek, m,{from, prefix, command, reply, userConfig}) => {
+async(manaofc, mek, m,{from, prefix, command, reply, config}) => {
 try{
-let menuc = `*🗣️ ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} OWNER MENU. 🗣️*\n\n`
+let menuc = `*🗣️ ${config.BOT_NAME || config.BOT_NAME} OWNER MENU. 🗣️*\n\n`
 for (let i=0;i<commands.length;i++) { 
 if(commands[i].category === 'owner'){
 if(!commands[i].dontAddCommandList){
@@ -1040,13 +1237,13 @@ let generatebutton = [{
     type: 1
   }]
 let buttonMessaged = {
-  image: userConfig.IMAGE_PATH || defaultConfig.IMAGE_PATH,
+  image: config.IMAGE_PATH || config.IMAGE_PATH,
   caption: menuc,
-  footer: userConfig.FOOTER || defaultConfig.FOOTER,
+  footer: config.FOOTER || config.FOOTER,
   headerType: 4,
   buttons: generatebutton
 };
-return await socket.buttonMessage(from, buttonMessaged, mek);
+return await manaofc.buttonMessage(from, buttonMessaged, mek);
 } catch (e) {
 reply('*ERROR !!*')
 console.log(e)
@@ -1062,9 +1259,9 @@ cmd({
     dontAddCommandList: true,
     filename: __filename
 },
-async(socket, mek, m,{from, prefix, command, reply, userConfig}) => {
+async(manaofc, mek, m,{from, prefix, command, reply, config}) => {
 try{
-let menuc = `*🔍 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} SEARCH MENU. 🔍*\n\n`
+let menuc = `*🔍 ${config.BOT_NAME || config.BOT_NAME} SEARCH MENU. 🔍*\n\n`
 for (let i=0;i<commands.length;i++) { 
 if(commands[i].category === 'search'){
   if(!commands[i].dontAddCommandList){
@@ -1081,13 +1278,13 @@ let generatebutton = [{
     type: 1
   }]
   let buttonMessaged = {
-    image: userConfig.IMAGE_PATH || defaultConfig.IMAGE_PATH,
+    image: config.IMAGE_PATH || config.IMAGE_PATH,
     caption: menuc,
-    footer: userConfig.FOOTER || defaultConfig.FOOTER,
+    footer: config.FOOTER || config.FOOTER,
     headerType: 4,
     buttons: generatebutton
   };
-  return await socket.buttonMessage(from, buttonMessaged, mek);
+  return await manaofc.buttonMessage(from, buttonMessaged, mek);
 } catch (e) {
   reply('*ERROR !!*')
   console.log(e)
@@ -1102,9 +1299,9 @@ cmd({
     dontAddCommandList: true,
     filename: __filename
 },
-async(socket, mek, m,{from, prefix, command, reply, userConfig}) => {
+async(manaofc, mek, m,{from, prefix, command, reply, config}) => {
 try{
-let menuc = `*🔄 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} CONVERT MENU. 🔄*\n\n`
+let menuc = `*🔄 ${config.BOT_NAME || config.BOT_NAME} CONVERT MENU. 🔄*\n\n`
 for (let i=0;i<commands.length;i++) { 
 if(commands[i].category === 'convert'){
   if(!commands[i].dontAddCommandList){
@@ -1121,13 +1318,13 @@ let generatebutton = [{
     type: 1
   }]
   let buttonMessaged = {
-    image: userConfig.IMAGE_PATH || defaultConfig.IMAGE_PATH,
+    image: config.IMAGE_PATH || config.IMAGE_PATH,
     caption: menuc,
-    footer: userConfig.FOOTER || defaultConfig.FOOTER,
+    footer: config.FOOTER || config.FOOTER,
     headerType: 4,
     buttons: generatebutton
   };
-  return await socket.buttonMessage(from, buttonMessaged, mek);
+  return await manaofc.buttonMessage(from, buttonMessaged, mek);
 } catch (e) {
   reply('*ERROR !!*')
   console.log(e)
@@ -1143,9 +1340,9 @@ cmd({
     dontAddCommandList: true,
     filename: __filename
 },
-async(socket, mek, m,{from, prefix, command, reply, userConfig}) => {
+async(manaofc, mek, m,{from, prefix, command, reply, config}) => {
 try{
-let menuc = `*🔧 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} TOOLS MENU. 🔧*\n\n`
+let menuc = `*🔧 ${config.BOT_NAME || config.BOT_NAME} TOOLS MENU. 🔧*\n\n`
 for (let i=0;i<commands.length;i++) { 
 if(commands[i].category === 'tools'){
   if(!commands[i].dontAddCommandList){
@@ -1162,13 +1359,13 @@ let generatebutton = [{
     type: 1
   }]
   let buttonMessaged = {
-    image: userConfig.IMAGE_PATH || defaultConfig.IMAGE_PATH,
+    image: config.IMAGE_PATH || config.IMAGE_PATH,
     caption: menuc,
-    footer: userConfig.FOOTER || defaultConfig.FOOTER,
+    footer: config.FOOTER || config.FOOTER,
     headerType: 4,
     buttons: generatebutton
   };
-  return await socket.buttonMessage(from, buttonMessaged, mek);
+  return await manaofc.buttonMessage(from, buttonMessaged, mek);
 } catch (e) {
   reply('*ERROR !!*')
   console.log(e)
@@ -1184,9 +1381,9 @@ cmd({
     dontAddCommandList: true,
     filename: __filename
 },
-async(socket, mek, m,{from, prefix, command, reply, userConfig}) => {
+async(manaofc, mek, m,{from, prefix, command, reply, config}) => {
 try{
-let menuc = `*🎐 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} OTHER MENU. 🎐*\n\n`
+let menuc = `*🎐 ${config.BOT_NAME || config.BOT_NAME} OTHER MENU. 🎐*\n\n`
 for (let i=0;i<commands.length;i++) { 
 if(commands[i].category === 'others'){
 if(!commands[i].dontAddCommandList){
@@ -1203,13 +1400,13 @@ let generatebutton = [{
     type: 1
   }]
   let buttonMessaged = {
-    image: userConfig.IMAGE_PATH || defaultConfig.IMAGE_PATH,
+    image: config.IMAGE_PATH || config.IMAGE_PATH,
     caption: menuc,
-    footer: userConfig.FOOTER || defaultConfig.FOOTER,
+    footer: config.FOOTER || config.FOOTER,
     headerType: 4,
     buttons: generatebutton
   };
-  return await socket.buttonMessage(from, buttonMessaged, mek);
+  return await manaofc.buttonMessage(from, buttonMessaged, mek);
 } catch (e) {
   reply('*ERROR !!*')
   console.log(e)
@@ -1225,9 +1422,9 @@ cmd({
   dontAddCommandList: true,
   filename: __filename
 },
-async(socket, mek, m,{from, prefix, command, reply, userConfig}) => {
+async(manaofc, mek, m,{from, prefix, command, reply, config}) => {
 try{
-let menuc = `*🎬 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} MOVIE MENU. 🎬*\n\n`
+let menuc = `*🎬 ${config.BOT_NAME || config.BOT_NAME} MOVIE MENU. 🎬*\n\n`
 for (let i=0;i<commands.length;i++) { 
 if(commands[i].category === 'movie'){
 if(!commands[i].dontAddCommandList){
@@ -1244,13 +1441,13 @@ let generatebutton = [{
     type: 1
   }]
 let buttonMessaged = {
-  image: userConfig.IMAGE_PATH || defaultConfig.IMAGE_PATH,
+  image: config.IMAGE_PATH || config.IMAGE_PATH,
   caption: menuc,
-  footer: userConfig.FOOTER || defaultConfig.FOOTER,
+  footer: config.FOOTER || config.FOOTER,
   headerType: 4,
   buttons: generatebutton
 };
-return await socket.buttonMessage(from, buttonMessaged, mek);
+return await manaofc.buttonMessage(from, buttonMessaged, mek);
 } catch (e) {
 reply('*ERROR !!*')
 console.log(e)
@@ -1266,9 +1463,9 @@ cmd({
     dontAddCommandList: true,
     filename: __filename
 },
-async(socket, mek, m,{from, prefix, command, reply, userConfig}) => {
+async(manaofc, mek, m,{from, prefix, command, reply, config}) => {
 try{
-let menuc = `*🤖 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} AI MENU. 🤖*\n\n`
+let menuc = `*🤖 ${config.BOT_NAME || config.BOT_NAME} AI MENU. 🤖*\n\n`
 for (let i=0;i<commands.length;i++) { 
 if(commands[i].category === 'ai'){
 if(!commands[i].dontAddCommandList){
@@ -1285,13 +1482,13 @@ let generatebutton = [{
     type: 1
   }]
   let buttonMessaged = {
-    image: userConfig.IMAGE_PATH || defaultConfig.IMAGE_PATH,
+    image: config.IMAGE_PATH || config.IMAGE_PATH,
     caption: menuc,
-    footer: userConfig.FOOTER || defaultConfig.FOOTER,
+    footer: config.FOOTER || config.FOOTER,
     headerType: 4,
     buttons: generatebutton
   };
-  return await socket.buttonMessage(from, buttonMessaged, mek);
+  return await manaofc.buttonMessage(from, buttonMessaged, mek);
 } catch (e) {
   reply('*ERROR !!*')
   console.log(e)
@@ -1307,9 +1504,9 @@ cmd({
     dontAddCommandList: true,
     filename: __filename
 },
-async(socket, mek, m,{from, prefix, command, reply, userConfig}) => {
+async(manaofc, mek, m,{from, prefix, command, reply, config}) => {
 try{
-let menuc = `*🎨 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} LOGO MENU. 🎨*\n\n`
+let menuc = `*🎨 ${config.BOT_NAME || config.BOT_NAME} LOGO MENU. 🎨*\n\n`
 for (let i=0;i<commands.length;i++) { 
 if(commands[i].category === 'logo'){
 if(!commands[i].dontAddCommandList){
@@ -1326,13 +1523,13 @@ let generatebutton = [{
     type: 1
   }]
   let buttonMessaged = {
-    image: userConfig.IMAGE_PATH || defaultConfig.IMAGE_PATH,
+    image: config.IMAGE_PATH || config.IMAGE_PATH,
     caption: menuc,
-    footer: userConfig.FOOTER || defaultConfig.FOOTER,
+    footer: config.FOOTER || config.FOOTER,
     headerType: 4,
     buttons: generatebutton
   };
-  return await socket.buttonMessage(from, buttonMessaged, mek);
+  return await manaofc.buttonMessage(from, buttonMessaged, mek);
 } catch (e) {
   reply('*ERROR !!*')
   console.log(e)
@@ -1348,9 +1545,9 @@ cmd({
     dontAddCommandList: true,
     filename: __filename
 },
-async(socket, mek, m,{from, prefix, command, reply, userConfig}) => {
+async(manaofc, mek, m,{from, prefix, command, reply, config}) => {
 try{
-let menuc = `*🏠 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} MAIN MENU. 🏠*\n\n`
+let menuc = `*🏠 ${config.BOT_NAME || config.BOT_NAME} MAIN MENU. 🏠*\n\n`
 for (let i=0;i<commands.length;i++) { 
 if(commands[i].category === 'main'){
 if(!commands[i].dontAddCommandList){
@@ -1367,13 +1564,13 @@ let generatebutton = [{
     type: 1
   }]
   let buttonMessaged = {
-    image: userConfig.IMAGE_PATH || defaultConfig.IMAGE_PATH,
+    image: config.IMAGE_PATH || config.IMAGE_PATH,
     caption: menuc,
-    footer: userConfig.FOOTER || defaultConfig.FOOTER,
+    footer: config.FOOTER || config.FOOTER,
     headerType: 4,
     buttons: generatebutton
   };
-  return await socket.buttonMessage(from, buttonMessaged, mek);
+  return await manaofc.buttonMessage(from, buttonMessaged, mek);
 } catch (e) {
   reply('*ERROR !!*')
   console.log(e)
@@ -1390,7 +1587,7 @@ cmd({
     use: '.system',
     filename: __filename
 },
-async(socket, mek, m,{from, reply, userConfig}) => {
+async(manaofc, mek, m,{from, reply, config}) => {
 try{
   let totalStorage = Math.floor(os.totalmem() / 1024 / 1024) + 'MB'
   let freeStorage = Math.floor(os.freemem() / 1024 / 1024) + 'MB'
@@ -1400,7 +1597,7 @@ try{
   let hostname = os.hostname()
 
   let mes = `
-*⚙️ ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} SYSTEM INFO. ⚙️*
+*⚙️ ${config.BOT_NAME || config.BOT_NAME} SYSTEM INFO. ⚙️*
 
   ◈ *Owner*: manaofc
   ◈ *Version*: ${version}
@@ -1412,9 +1609,9 @@ try{
   ◈ *CPU Speed*: ${cpuSpeed} GHz
   ◈ *CPU Cores*: ${cpuCount} 
   
-${userConfig.FOOTER || defaultConfig.FOOTER}`
+${config.FOOTER || config.FOOTER}`
 
-await socket.sendMessage(from, { image: {url: userConfig.IMAGE_PATH || defaultConfig.IMAGE_PATH}, caption: mes }, { quoted: mek })
+await manaofc.sendMessage(from, { image: {url: config.IMAGE_PATH || config.IMAGE_PATH}, caption: mes }, { quoted: mek })
     
 } catch (e) {
 reply('*Error !!*')
@@ -1432,7 +1629,7 @@ cmd({
     react: "⚡",
     filename: __filename
 },
-async (socket, mek, m, { from, quoted, sender, reply, userConfig }) => {
+async (manaofc, mek, m, { from, quoted, sender, reply, config }) => {
     try {
         const start = Date.now();
 
@@ -1446,17 +1643,17 @@ async (socket, mek, m, { from, quoted, sender, reply, userConfig }) => {
             textEmoji = textEmojis[Math.floor(Math.random() * textEmojis.length)];
         }
 
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             react: { text: textEmoji, key: mek.key }
         });
 
         const end = Date.now();
         const responseTime = end - start;
 
-        const text = `${userConfig.BOT_NAME || defaultConfig.BOT_NAME}\n\n*╭━━━━━━━✧༺♥༻✧━━━━━━━*\n🏓 *Pong!* ${reactionEmoji}\n⏱️ Response Time: *${responseTime} ms*\n*╰━━━━━━━✧༺♥༻✧━━━━━━━*\n${userConfig.FOOTER || defaultConfig.FOOTER}`;
+        const text = `${config.BOT_NAME || config.BOT_NAME}\n\n*╭━━━━━━━✧༺♥༻✧━━━━━━━*\n🏓 *Pong!* ${reactionEmoji}\n⏱️ Response Time: *${responseTime} ms*\n*╰━━━━━━━✧༺♥༻✧━━━━━━━*\n${config.FOOTER || config.FOOTER}`;
 
-        await socket.sendMessage(from, {
-            image: { url: userConfig.IMAGE_PATH || defaultConfig.IMAGE_PATH },
+        await manaofc.sendMessage(from, {
+            image: { url: config.IMAGE_PATH || config.IMAGE_PATH },
             caption: text
         }, { quoted: mek });
 
@@ -1474,7 +1671,7 @@ cmd({
     category: "main",
     filename: __filename
 },
-async (socket, mek, m, { from, reply }) => {
+async (manaofc, mek, m, { from, reply }) => {
     try {
         const vcard = 
             'BEGIN:VCARD\n' +
@@ -1485,7 +1682,7 @@ async (socket, mek, m, { from, reply }) => {
             'EMAIL:manishasasmith27@gmail.com\n' +
             'END:VCARD';
 
-        await socket.sendMessage(from, { 
+        await manaofc.sendMessage(from, { 
             contacts: { 
                 displayName: "manaofc", 
                 contacts: [{ vcard }] 
@@ -1508,7 +1705,7 @@ cmd({
     category: "download",
     use: '.pinterest <query>',
     filename: __filename
-}, async (socket, mek, m, { from, q, reply, userConfig }) => {
+}, async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q) return await reply("*Please provide a search query!*");
 
@@ -1522,9 +1719,9 @@ cmd({
         }
 
         for (let i = 0; i < Math.min(data.length, 7); i++) {
-            await socket.sendMessage(from, { 
+            await manaofc.sendMessage(from, { 
                 image: { url: data[i] }, 
-                caption: userConfig.FOOTER 
+                caption: config.FOOTER 
             }, { quoted: mek });
         }
     } catch (e) {
@@ -1544,7 +1741,7 @@ cmd(
     use: ".song <Song Name or YouTube URL>",
     filename: __filename,
   },
-  async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
+  async (manaofc, mek, m, { from, prefix, q, reply, config }) => {
     try {
       if (!q) return reply("❌ *Please provide a song name or YouTube URL!*");
 
@@ -1555,7 +1752,7 @@ cmd(
 
       const song = search.videos[0];
 
-      const caption = `*🎶 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} SONG DOWNLOAD.📥*
+      const caption = `*🎶 ${config.BOT_NAME || config.BOT_NAME} SONG DOWNLOAD.📥*
       *╭━━━━━━━✧༺♥༻✧━━━━━━━*
       │✨ \`Title\` : ${song.title}
       │⏰ \`Duration\` : ${song.timestamp}
@@ -1580,12 +1777,12 @@ cmd(
       const buttonMessage = {
         image: song.thumbnail,
         caption: caption,
-        footer: userConfig.FOOTER || defaultConfig.FOOTER,
+        footer: config.FOOTER || config.FOOTER,
         buttons: buttons,
         headerType: 4,
       };
 
-      await socket.buttonMessage(from, buttonMessage, mek );
+      await manaofc.buttonMessage(from, buttonMessage, mek );
 
     } catch (e) {
       console.log(e);
@@ -1601,11 +1798,11 @@ cmd(
     dontAddCommandList: true,
     filename: __filename,
   },
-  async (socket, mek, m, { from, q, reply, userConfig }) => {
+  async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
       if (!q) return reply("❌ *Need a YouTube URL!*");
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "⬇️", key: mek.key },
       });
 
@@ -1619,7 +1816,7 @@ cmd(
         return reply("❌ *Failed to fetch audio!*");
       }
 
-      await socket.sendMessage(
+      await manaofc.sendMessage(
         from,
         {
           audio: { url: yta.download_url },
@@ -1629,7 +1826,7 @@ cmd(
         { quoted: mek }
       );
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "✔️", key: mek.key },
       });
 
@@ -1648,11 +1845,11 @@ cmd(
     dontAddCommandList: true,
     filename: __filename,
   },
-  async (socket, mek, m, { from, q, reply, userConfig }) => {
+  async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
       if (!q) return reply("❌ *Need a YouTube URL!*");
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "⬇️", key: mek.key },
       });
 
@@ -1667,7 +1864,7 @@ cmd(
         return reply("❌ *Failed to fetch document link!*");
       }
 
-      await socket.sendMessage(
+      await manaofc.sendMessage(
         from,
         {
           document: { url: yta.download_url },
@@ -1678,7 +1875,7 @@ cmd(
         { quoted: mek }
       );
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "✔️", key: mek.key },
       });
 
@@ -1698,7 +1895,7 @@ category: "download",
 use: ".video <Video Name or YouTube URL>",
 filename: __filename,
 },
-async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, prefix, q, reply, config }) => {
 try {
 if (!q) return reply("❌ Please provide a song name or YouTube URL!");
 const search = await yts(q);
@@ -1706,7 +1903,7 @@ if (!search.videos || search.videos.length === 0) {
 return reply("⚠️ No video results found!");
 }
 const video = search.videos[0];
-const caption = `*🎦 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} VIDEO DOWNLOAD.📥* *╭━━━━━━━✧༺♥༻✧━━━━━━━* │✨ \`Title\` : ${video.title}
+const caption = `*🎦 ${config.BOT_NAME || config.BOT_NAME} VIDEO DOWNLOAD.📥* *╭━━━━━━━✧༺♥༻✧━━━━━━━* │✨ \`Title\` : ${video.title}
 │⏰ \`Duration\` : ${video.timestamp}
 │👀 \`Views\` : ${video.views}
 │ 📅 ‍ \`Uploaded\` : ${video.ago}
@@ -1722,11 +1919,11 @@ type: 1,
 const buttonMessage = {
 image: video.thumbnail,
 caption: caption,
-footer: userConfig.FOOTER || defaultConfig.FOOTER,
+footer: config.FOOTER || config.FOOTER,
 buttons: buttons,
 headerType: 4,
 };
-await socket.buttonMessage(from, buttonMessage, mek );
+await manaofc.buttonMessage(from, buttonMessage, mek );
 } catch (e) {
 console.log(e);
 reply("❌ An error occurred while searching!");
@@ -1742,7 +1939,7 @@ cmd(
   dontAddCommandList: true,
   filename: __filename,
 },
-async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, prefix, q, reply, config }) => {
   try {
     if (!q) return reply("❌ Need a YouTube URL!");
     
@@ -1761,7 +1958,7 @@ async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
     
     // Show thumbnail
     if (thumbnail) {
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         image: { url: thumbnail },
         caption: `*🎬 Video Found!*\n\n🔗 ${q}\n\n👇 *Select the quality you need:*`,
       }, { quoted: mek });
@@ -1778,7 +1975,7 @@ async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
     
     const listMessage = {
       text: thumbnail ? "*👇 Select quality:*" : `*🎬 Video Downloader*\n\n🔗 ${q}\n\n*👇 Select quality:*`,
-      footer: userConfig.FOOTER || defaultConfig.FOOTER,
+      footer: config.FOOTER || config.FOOTER,
       title: "*📥 Quality Selector*",
       buttonText: "View Qualities 📊",
       sections: [{
@@ -1791,7 +1988,7 @@ async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
       }],
     };
     
-    await socket.listMessage(from, listMessage, mek);
+    await manaofc.listMessage(from, listMessage, mek);
     
   } catch (e) {
     console.log(e);
@@ -1808,7 +2005,7 @@ cmd(
   dontAddCommandList: true,
   filename: __filename,
 },
-async (socket, mek, m, { from, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, config }) => {
   try {
     if (!q || !q.includes("|")) {
       return reply("❌ Invalid format! Use: .ytdl <url>|<quality>");
@@ -1822,7 +2019,7 @@ async (socket, mek, m, { from, q, reply, userConfig }) => {
       return reply("❌ Invalid format! Use: .ytdl <url>|<quality>");
     }
     
-    await socket.sendMessage(from, {
+    await manaofc.sendMessage(from, {
       react: { text: "⬇️", key: mek.key },
     });
     
@@ -1838,18 +2035,18 @@ async (socket, mek, m, { from, q, reply, userConfig }) => {
     }
     
     // Send video (inline video)
-    await socket.sendMessage(
+    await manaofc.sendMessage(
       from,
       {
         video: { url: ytd.download_url },
         mimetype: "video/mp4",
-        caption: `*🎬 ${ytd.title || "Video"}*\n📊 Quality: ${quality}p\n✅ Downloaded via ${userConfig.BOT_NAME || defaultConfig.BOT_NAME}`,
+        caption: `*🎬 ${ytd.title || "Video"}*\n📊 Quality: ${quality}p\n✅ Downloaded via ${config.BOT_NAME || config.BOT_NAME}`,
       },
       { quoted: mek }
     );
     
     // ✅ Add reaction
-    await socket.sendMessage(from, {
+    await manaofc.sendMessage(from, {
       react: { text: "✔️", key: mek.key },
     });
     
@@ -1870,11 +2067,11 @@ cmd(
     use: ".fb <Facebook Video URL>",
     filename: __filename,
   },
-  async (socket, mek, m, { from, q, reply }) => {
+  async (manaofc, mek, m, { from, q, reply }) => {
     try {
       if (!q) return reply("❌ *Need a Facebook URL!*");
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "⬇️", key: mek.key },
       });
 
@@ -1896,7 +2093,7 @@ cmd(
 
       // 📈 පළමුව HD quality එක යවනවා
       if (hdUrl) {
-        await socket.sendMessage(
+        await manaofc.sendMessage(
           from,
           {
             video: { url: hdUrl },
@@ -1907,7 +2104,7 @@ cmd(
       }
       // 📉 HD නැත්නම් SD quality එකට fallback වෙනවා
       else if (sdUrl) {
-        await socket.sendMessage(
+        await manaofc.sendMessage(
           from,
           {
             video: { url: sdUrl },
@@ -1919,7 +2116,7 @@ cmd(
         return reply("❌ *No download links found!*");
       }
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "✔️", key: mek.key },
       });
 
@@ -1941,7 +2138,7 @@ cmd(
     use: ".tiktok <TikTok URL>",
     filename: __filename,
   },
-  async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
+  async (manaofc, mek, m, { from, prefix, q, reply, config }) => {
     try {
       if (!q) return reply("❌ *Please provide a TikTok URL!*");
 
@@ -1955,7 +2152,7 @@ cmd(
 
       const tt = data.data;
 
-      const caption = `*🎵 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} TIKTOK DOWNLOAD.📥*
+      const caption = `*🎵 ${config.BOT_NAME || config.BOT_NAME} TIKTOK DOWNLOAD.📥*
       *╭━━━━━━━✧༺♥༻✧━━━━━━━*
       │✨ \`Title\` : ${tt.title || "No title"}
       │👤 \`Author\` : ${tt.author?.nickname || "Unknown"}
@@ -1982,12 +2179,12 @@ cmd(
       const buttonMessage = {
         image: tt.thumbnail,
         caption: caption,
-        footer: userConfig.FOOTER || defaultConfig.FOOTER,
+        footer: config.FOOTER || config.FOOTER,
         buttons: buttons,
         headerType: 4,
       };
 
-      await socket.buttonMessage(from, buttonMessage, mek);
+      await manaofc.buttonMessage(from, buttonMessage, mek);
 
     } catch (e) {
       console.log(e);
@@ -2004,11 +2201,11 @@ cmd(
     dontAddCommandList: true,
     filename: __filename,
   },
-  async (socket, mek, m, { from, q, reply }) => {
+  async (manaofc, mek, m, { from, q, reply }) => {
     try {
       if (!q) return reply("❌ *Need a TikTok URL!*");
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "⬇️", key: mek.key },
       });
 
@@ -2022,7 +2219,7 @@ cmd(
         return reply("❌ *Failed to fetch video!*");
       }
 
-      await socket.sendMessage(
+      await manaofc.sendMessage(
         from,
         {
           video: { url: data.data.video },
@@ -2031,7 +2228,7 @@ cmd(
         { quoted: mek }
       );
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "✔️", key: mek.key },
       });
 
@@ -2050,11 +2247,11 @@ cmd(
     dontAddCommandList: true,
     filename: __filename,
   },
-  async (socket, mek, m, { from, q, reply }) => {
+  async (manaofc, mek, m, { from, q, reply }) => {
     try {
       if (!q) return reply("❌ *Need a TikTok URL!*");
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "⬇️", key: mek.key },
       });
 
@@ -2068,7 +2265,7 @@ cmd(
         return reply("❌ *Failed to fetch audio!*");
       }
 
-      await socket.sendMessage(
+      await manaofc.sendMessage(
         from,
         {
           audio: { url: data.data.audio },
@@ -2078,7 +2275,7 @@ cmd(
         { quoted: mek }
       );
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "✔️", key: mek.key },
       });
 
@@ -2107,11 +2304,11 @@ cmd(
     use: ".an1 *<App Name>*",
     filename: __filename,
   },
-  async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
+  async (manaofc, mek, m, { from, prefix, q, reply, config }) => {
     try {
       if (!q) return await reply("*Please provide a game/app name!*\n\nExample: `.an1 freefire`");
 
-      await socket.sendMessage(from, { react: { text: "🔍", key: mek.key } });
+      await manaofc.sendMessage(from, { react: { text: "🔍", key: mek.key } });
 
       const response = await fetch(
         "https://manaofc-api.vercel.app/an1/search?q=" + encodeURIComponent(q)
@@ -2134,14 +2331,14 @@ cmd(
       }));
 
       const buttonMessage = {
-        image: userConfig.IMAGE_PATH || defaultConfig.IMAGE_PATH,
-        caption: `*🔰 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} AN1 SEARCH*`,
-        footer: userConfig.FOOTER || defaultConfig.FOOTER,
+        image: config.IMAGE_PATH || config.IMAGE_PATH,
+        caption: `*🔰 ${config.BOT_NAME || config.BOT_NAME} AN1 SEARCH*`,
+        footer: config.FOOTER || config.FOOTER,
         buttons: rows,
         headerType: 4,
       };
 
-      return await socket.buttonMessage(from, buttonMessage, mek);
+      return await manaofc.buttonMessage(from, buttonMessage, mek);
 
     } catch (e) {
       console.error(e);
@@ -2160,11 +2357,11 @@ cmd(
     dontAddCommandList: true,
     filename: __filename,
   },
-  async (socket, mek, m, { from, q, reply, userConfig }) => {
+  async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
       if (!q) return await reply("*❌ Please provide an AN1 URL!*");
 
-      await socket.sendMessage(from, { react: { text: "⬇️", key: mek.key } });
+      await manaofc.sendMessage(from, { react: { text: "⬇️", key: mek.key } });
 
       const response = await fetch(
         "https://manaofc-api.vercel.app/an1/download?url=" + encodeURIComponent(q)
@@ -2176,7 +2373,7 @@ cmd(
         return await reply("*❌ Download link not available!*\n\n*Error:* " + (app.message || "Unknown error"));
       }
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         image: { url: app.icon },
         caption: "*╭━━━━━━━✧༺♥༻✧━━━━━━━*\n*📦 Downloading " + app.title + "...*\n\n" +
           "*Version:* " + app.version + "\n" +
@@ -2188,14 +2385,14 @@ cmd(
 
       await delay(1000);
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         document: { url: app.directDownloadUrl },
         mimetype: "application/vnd.android.package-archive",
         fileName: app.title.replace(/[^a-zA-Z0-9]/g, "_") + "_v" + app.version + ".apk",
-        caption: `${userConfig.FOOTER || defaultConfig.FOOTER}`
+        caption: `${config.FOOTER || config.FOOTER}`
       }, { quoted: mek });
 
-      await socket.sendMessage(from, { react: { text: "✅", key: mek.key } });
+      await manaofc.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
       console.error(e);
@@ -2215,7 +2412,7 @@ cmd({
     category: "download",
     filename: __filename
 },
-async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, prefix, q, reply, config }) => {
     try {
         if (!q) return reply("*Please enter a query!*");
 
@@ -2241,13 +2438,13 @@ async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
 
         const buttonMessage = {
             image: "https://files.catbox.moe/rnn9bf.jpeg",
-            caption: `*🔞 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} XNXX SEARCH*`,
-            footer: userConfig.FOOTER || defaultConfig.FOOTER,
+            caption: `*🔞 ${config.BOT_NAME || config.BOT_NAME} XNXX SEARCH*`,
+            footer: config.FOOTER || config.FOOTER,
             buttons: rows,
             headerType: 4
         };
 
-        await socket.buttonMessage(from, buttonMessage, mek);
+        await manaofc.buttonMessage(from, buttonMessage, mek);
 
     } catch (e) {
         console.log(e);
@@ -2261,7 +2458,7 @@ cmd({
     dontAddCommandList: true,
     filename: __filename
 },
-async (socket, mek, m, { from, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q) return reply("*Need a video url!*");
 
@@ -2279,12 +2476,12 @@ async (socket, mek, m, { from, q, reply, userConfig }) => {
 
         let caption = "*╭━━━━━━━✧༺♥༻✧━━━━━━━*\n*🔞 XNXX VIDEO DOWNLOAD*\n🎬 Title: " + data.title + "\n⏱ Duration: " + data.duration + "\n👀 Views: " + data.views + "\n👍 Likes: " + data.likes + "\n⭐ Rating: " + data.rating + "\n💬 Comments: " + data.comments + "\n*╰━━━━━━━✧༺♥༻✧━━━━━━━*";
 
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             image: { url: data.thumbnail },
             caption
         }, { quoted: mek });
 
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             video: { url: data.dlink },
             mimetype: "video/mp4"
         }, { quoted: mek });
@@ -2305,7 +2502,7 @@ cmd({
     category: "download",
     filename: __filename
 },
-async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, prefix, q, reply, config }) => {
     try {
         if (!q) return reply("❌ Please enter a search query!\n\nExample: `.xvideo mom and son`");
 
@@ -2338,13 +2535,13 @@ async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
 
         const buttonMessage = {
             image: "https://files.catbox.moe/97o88i.png",
-            caption: `*🔞 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} XVIDEO SEARCH`,
-            footer: userConfig.FOOTER || defaultConfig.FOOTER,
+            caption: `*🔞 ${config.BOT_NAME || config.BOT_NAME} XVIDEO SEARCH`,
+            footer: config.FOOTER || config.FOOTER,
             buttons: rows,
             headerType: 4
         };
 
-        await socket.buttonMessage(from, buttonMessage, mek);
+        await manaofc.buttonMessage(from, buttonMessage, mek);
 
     } catch (e) {
         console.error("XVIDEO Search Error:", e);
@@ -2358,7 +2555,7 @@ cmd({
     dontAddCommandList: true,
     filename: __filename
 },
-async (socket, mek, m, { from, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q) return reply("❌ Need a video URL!\n\nUse `.xvideo <query>` first.");
 
@@ -2388,7 +2585,7 @@ async (socket, mek, m, { from, q, reply, userConfig }) => {
 
         // Send thumbnail with info
         if (data.thumbnail) {
-            await socket.sendMessage(from, {
+            await manaofc.sendMessage(from, {
                 image: { url: data.thumbnail },
                 caption: caption
             }, { quoted: mek });
@@ -2400,7 +2597,7 @@ async (socket, mek, m, { from, q, reply, userConfig }) => {
         const downloadUrl = data.dlink || data.url || null;
 
         if (downloadUrl) {
-            await socket.sendMessage(from, {
+            await manaofc.sendMessage(from, {
                 video: { url: downloadUrl },
                 mimetype: "video/mp4",
                 caption: `📥 *Download Complete*`
@@ -2428,11 +2625,11 @@ cmd(
     use: ".sinhalasub <movie name>",
     filename: __filename,
   },
-  async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
+  async (manaofc, mek, m, { from, prefix, q, reply, config }) => {
     try {
       if (!q) return reply("❌ *Please provide a movie name!*\n\n*Example:* .sinhalasub avatar");
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "🔍", key: mek.key },
       });
 
@@ -2454,15 +2651,15 @@ cmd(
 
       const buttonMessage = {
         image: "https://files.catbox.moe/nsshzm.jpeg",
-        caption: `*🎬 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} SINHALASUB SEARCH* `,
-        footer: userConfig.FOOTER || defaultConfig.FOOTER,
+        caption: `*🎬 ${config.BOT_NAME || config.BOT_NAME} SINHALASUB SEARCH* `,
+        footer: config.FOOTER || config.FOOTER,
         buttons: rows,
         headerType: 4
       };
 
-      await socket.buttonMessage(from, buttonMessage, mek);
+      await manaofc.buttonMessage(from, buttonMessage, mek);
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "✅", key: mek.key },
       });
 
@@ -2484,11 +2681,11 @@ cmd(
     dontAddCommandList: true,
     filename: __filename,
   },
-  async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
+  async (manaofc, mek, m, { from, prefix, q, reply, config }) => {
     try {
       if (!q) return reply("❌ *Need a movie link!*");
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "⏳", key: mek.key },
       });
 
@@ -2521,14 +2718,14 @@ cmd(
       const buttonMessage = {
         image: data.thumbnail,
         caption: caption,
-        footer: userConfig.FOOTER || defaultConfig.FOOTER,
+        footer: config.FOOTER || config.FOOTER,
         buttons: buttons,
         headerType: 4
       };
 
-      await socket.buttonMessage(from, buttonMessage, mek);
+      await manaofc.buttonMessage(from, buttonMessage, mek);
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "✅", key: mek.key },
       });
 
@@ -2550,11 +2747,11 @@ cmd(
     dontAddCommandList: true,
     filename: __filename,
   },
-  async (socket, mek, m, { from, q, reply, userConfig }) => {
+  async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
       if (!q) return reply("❌ *Need a download link!*");
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "⬇️", key: mek.key },
       });
 
@@ -2568,7 +2765,7 @@ cmd(
       const data = res.data;
       const downloadUrl = data.directUrl || data.pixeldrainUrl;
 
-      await socket.sendMessage(
+      await manaofc.sendMessage(
         from,
         {
           document: { url: downloadUrl },
@@ -2578,7 +2775,7 @@ cmd(
         { quoted: mek }
       );
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "✅", key: mek.key },
       });
 
@@ -2601,11 +2798,11 @@ cmd(
     use: ".cinesubz <movie name>",
     filename: __filename,
   },
-  async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
+  async (manaofc, mek, m, { from, prefix, q, reply, config }) => {
     try {
       if (!q) return reply("❌ *Please provide a movie name!*\n\n*Example:* .cinesubz deadpool");
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "🔍", key: mek.key },
       });
 
@@ -2627,15 +2824,15 @@ cmd(
 
       const buttonMessage = {
         image: "https://files.catbox.moe/57a24d.jpeg",
-        caption: `*🎬 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} CINESUBZ SEARCH* `,
-        footer: userConfig.FOOTER || defaultConfig.FOOTER,
+        caption: `*🎬 ${config.BOT_NAME || config.BOT_NAME} CINESUBZ SEARCH* `,
+        footer: config.FOOTER || config.FOOTER,
         buttons: rows,
         headerType: 4
       };
 
-      await socket.buttonMessage(from, buttonMessage, mek);
+      await manaofc.buttonMessage(from, buttonMessage, mek);
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "✅", key: mek.key },
       });
 
@@ -2657,11 +2854,11 @@ cmd(
     dontAddCommandList: true,
     filename: __filename,
   },
-  async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
+  async (manaofc, mek, m, { from, prefix, q, reply, config }) => {
     try {
       if (!q) return reply("❌ *Need a movie link!*");
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "⏳", key: mek.key },
       });
 
@@ -2695,14 +2892,14 @@ cmd(
       const buttonMessage = {
         image: data.image,
         caption: caption,
-        footer: userConfig.FOOTER || defaultConfig.FOOTER,
+        footer: config.FOOTER || config.FOOTER,
         buttons: buttons,
         headerType: 4
       };
 
-      await socket.buttonMessage(from, buttonMessage, mek);
+      await manaofc.buttonMessage(from, buttonMessage, mek);
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "✅", key: mek.key },
       });
 
@@ -2724,11 +2921,11 @@ cmd(
     dontAddCommandList: true,
     filename: __filename,
   },
-  async (socket, mek, m, { from, q, reply, userConfig }) => {
+  async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
       if (!q) return reply("❌ *Need a download link!*");
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "⬇️", key: mek.key },
       });
 
@@ -2742,7 +2939,7 @@ cmd(
       const data = res.data;
       const downloadUrl = data.download[0].url;
 
-      await socket.sendMessage(
+      await manaofc.sendMessage(
         from,
         {
           document: { url: downloadUrl },
@@ -2752,7 +2949,7 @@ cmd(
         { quoted: mek }
       );
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "✅", key: mek.key },
       });
 
@@ -2776,11 +2973,11 @@ cmd(
     use: ".sinhalacartoons <cartoon name>",
     filename: __filename,
   },
-  async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
+  async (manaofc, mek, m, { from, prefix, q, reply, config }) => {
     try {
       if (!q) return reply("❌ *Please provide a cartoon name!*\n\n*Example:* .sinhalacartoons smurfs");
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "🔍", key: mek.key },
       });
 
@@ -2801,15 +2998,15 @@ cmd(
 
       const buttonMessage = {
         image: "https://files.catbox.moe/z2u40j.png",
-        caption: `*📺 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} SINHALACARTOONS SEARCH*`,
-        footer: userConfig.FOOTER || defaultConfig.FOOTER,
+        caption: `*📺 ${config.BOT_NAME || config.BOT_NAME} SINHALACARTOONS SEARCH*`,
+        footer: config.FOOTER || config.FOOTER,
         buttons: rows,
         headerType: 4
       };
 
-      await socket.buttonMessage(from, buttonMessage, mek);
+      await manaofc.buttonMessage(from, buttonMessage, mek);
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "✅", key: mek.key },
       });
 
@@ -2831,11 +3028,11 @@ cmd(
     dontAddCommandList: true,
     filename: __filename,
   },
-  async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
+  async (manaofc, mek, m, { from, prefix, q, reply, config }) => {
     try {
       if (!q) return reply("❌ *Need a cartoon link!*");
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "⏳", key: mek.key },
       });
 
@@ -2864,14 +3061,14 @@ cmd(
       const buttonMessage = {
         image: data.featuredImage,
         caption: caption,
-        footer: userConfig.FOOTER || defaultConfig.FOOTER,
+        footer: config.FOOTER || config.FOOTER,
         buttons: buttons,
         headerType: 4
       };
 
-      await socket.buttonMessage(from, buttonMessage, mek);
+      await manaofc.buttonMessage(from, buttonMessage, mek);
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "✅", key: mek.key },
       });
 
@@ -2893,11 +3090,11 @@ cmd(
     dontAddCommandList: true,
     filename: __filename,
   },
-  async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
+  async (manaofc, mek, m, { from, prefix, q, reply, config }) => {
     try {
       if (!q) return reply("❌ *Need a cartoon URL!*");
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "⬇️", key: mek.key },
       });
 
@@ -2935,15 +3132,15 @@ cmd(
 
       const listMessage = {
         text: `*📥 ${res.title}*\n\n*Total Episodes:* ${episodes.length}\n\nSelect the list below to download:`,
-        footer: userConfig.FOOTER || defaultConfig.FOOTER,
+        footer: config.FOOTER || config.FOOTER,
         title: res.title.length > 50 ? res.title.slice(0, 47) + "..." : res.title,
         buttonText: "📂 View Episodes",
         sections: sections
       };
 
-      await socket.listMessage(from, listMessage, mek);
+      await manaofc.listMessage(from, listMessage, mek);
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "✅", key: mek.key },
       });
 
@@ -2965,7 +3162,7 @@ cmd(
     dontAddCommandList: true,
     filename: __filename,
   },
-  async (socket, mek, m, { from, q, reply }) => {
+  async (manaofc, mek, m, { from, q, reply }) => {
     try {
       if (!q) return reply("❌ *Need download parameters!*");
       
@@ -2975,7 +3172,7 @@ cmd(
       
       if (isNaN(index) || !postUrl) return reply("❌ *Invalid download parameters!*");
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "⬆️", key: mek.key },
       });
 
@@ -2995,7 +3192,7 @@ cmd(
       const downloadUrl = directLinkObj.directUrls[index];
       const fileName = downloadUrl.split('/').pop() || "episode.mp4";
 
-      await socket.sendMessage(
+      await manaofc.sendMessage(
         from,
         {
           document: { url: downloadUrl },
@@ -3005,7 +3202,7 @@ cmd(
         { quoted: mek }
       );
 
-      await socket.sendMessage(from, {
+      await manaofc.sendMessage(from, {
         react: { text: "✅", key: mek.key },
       });
 
@@ -3027,7 +3224,7 @@ cmd({
     category: "movie",
     filename: __filename
 },
-async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, prefix, q, reply, config }) => {
     try {
         if (!q) return reply("*🔍 Please enter a movie name!*\n\nExample: `.zoom avatar`");
 
@@ -3051,13 +3248,13 @@ async (socket, mek, m, { from, prefix, q, reply, userConfig }) => {
 
         const buttonMessage = {
             image: "https://files.catbox.moe/higob5.png",
-            caption: `*📝 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} ZOOM*`,
-            footer: userConfig.FOOTER || defaultConfig.FOOTER,
+            caption: `*📝 ${config.BOT_NAME || config.BOT_NAME} ZOOM*`,
+            footer: config.FOOTER || config.FOOTER,
             buttons: rows,
             headerType: 4
         };
 
-       await socket.buttonMessage(from, buttonMessage, mek);
+       await manaofc.buttonMessage(from, buttonMessage, mek);
 
     } catch (e) {
         console.log(e);
@@ -3075,7 +3272,7 @@ cmd({
     dontAddCommandList: true,
     filename: __filename
 },
-async (socket, mek, m, { from, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q) return reply("*Need a post URL!*");
 
@@ -3100,10 +3297,10 @@ async (socket, mek, m, { from, q, reply, userConfig }) => {
                            "*╰━━━━━━━✧༺♥༻✧━━━━━━━*\n\n" +
                            "*⬇️ Downloading subtitle...*";
 
-        await socket.sendMessage(from, { text: infoCaption }, { quoted: mek });
+        await manaofc.sendMessage(from, { text: infoCaption }, { quoted: mek });
 
         try {
-            await socket.sendMessage(from, {
+            await manaofc.sendMessage(from, {
                 document: { url: res.downloadLink },
                 mimetype: "application/x-subrip",
                 fileName: fileName,
@@ -3113,7 +3310,7 @@ async (socket, mek, m, { from, q, reply, userConfig }) => {
         } catch (downloadError) {
             console.log("Download failed:", downloadError);
 
-            await socket.sendMessage(from, {
+            await manaofc.sendMessage(from, {
                 text: "*❌ Direct download failed!*\n\n" +
                       "*Title:* " + res.title + "\n" +
                       "*Download Link:* " + res.downloadLink + "\n\n" +
@@ -3143,17 +3340,17 @@ cmd({
     use: ".broadcast <message>",
     filename: __filename
 },
-async (socket, mek, m, { from, isOwner, reply, q, userConfig }) => {
+async (manaofc, mek, m, { from, isOwner, reply, q, config }) => {
     try {
         if (!isOwner) return reply("❌ *Only owner can use this!*");
         if (!q) return reply("❌ *Provide a message to broadcast!*");
 
-        const chats = await socket.groupFetchAllParticipating();
+        const chats = await manaofc.groupFetchAllParticipating();
         const groups = Object.values(chats);
 
         let count = 0;
         for (let group of groups) {
-            await socket.sendMessage(group.id, { text: `*📢 BROADCAST*
+            await manaofc.sendMessage(group.id, { text: `*📢 BROADCAST*
 
 ${q}` });
             count++;
@@ -3177,14 +3374,14 @@ cmd({
     use: ".leave",
     filename: __filename
 },
-async (socket, mek, m, { from, isGroup, isOwner, reply, userConfig }) => {
+async (manaofc, mek, m, { from, isGroup, isOwner, reply, config }) => {
     try {
         if (!isOwner) return reply("❌ *Only owner can use this!*");
         if (!isGroup) return reply("❌ *This is not a group!*");
 
         await reply("👋 *Leaving group...*");
         await delay(1000);
-        await socket.groupLeave(from);
+        await manaofc.groupLeave(from);
 
     } catch (e) {
         console.error(e);
@@ -3201,14 +3398,14 @@ cmd({
     use: ".block @user or reply",
     filename: __filename
 },
-async (socket, mek, m, { from, isOwner, reply, userConfig }) => {
+async (manaofc, mek, m, { from, isOwner, reply, config }) => {
     try {
         if (!isOwner) return reply("❌ *Only owner can use this!*");
 
         let users = mek.mentionedJid ? mek.mentionedJid[0] : (mek.quoted ? mek.quoted.sender : null);
         if (!users) return reply("❌ *Mention or reply to a user!*");
 
-        await socket.updateBlockStatus(users, "block");
+        await manaofc.updateBlockStatus(users, "block");
         reply(`🚫 *Blocked @${users.split('@')[0]}*`);
 
     } catch (e) {
@@ -3226,14 +3423,14 @@ cmd({
     use: ".unblock @user or reply",
     filename: __filename
 },
-async (socket, mek, m, { from, isOwner, reply, userConfig }) => {
+async (manaofc, mek, m, { from, isOwner, reply, config }) => {
     try {
         if (!isOwner) return reply("❌ *Only owner can use this!*");
 
         let users = mek.mentionedJid ? mek.mentionedJid[0] : (mek.quoted ? mek.quoted.sender : null);
         if (!users) return reply("❌ *Mention or reply to a user!*");
 
-        await socket.updateBlockStatus(users, "unblock");
+        await manaofc.updateBlockStatus(users, "unblock");
         reply(`✅ *Unblocked @${users.split('@')[0]}*`);
 
     } catch (e) {
@@ -3251,12 +3448,12 @@ cmd({
     use: ".setbio <text>",
     filename: __filename
 },
-async (socket, mek, m, { from, isOwner, reply, q, userConfig }) => {
+async (manaofc, mek, m, { from, isOwner, reply, q, config }) => {
     try {
         if (!isOwner) return reply("❌ *Only owner can use this!*");
         if (!q) return reply("❌ *Provide a bio text!*");
 
-        await socket.updateProfileStatus(q);
+        await manaofc.updateProfileStatus(q);
         reply(`✅ *Bio updated to:* ${q}`);
 
     } catch (e) {
@@ -3274,12 +3471,12 @@ cmd({
     use: ".setname <name>",
     filename: __filename
 },
-async (socket, mek, m, { from, isOwner, reply, q, userConfig }) => {
+async (manaofc, mek, m, { from, isOwner, reply, q, config }) => {
     try {
         if (!isOwner) return reply("❌ *Only owner can use this!*");
         if (!q) return reply("❌ *Provide a name!*");
 
-        await socket.updateProfileName(q);
+        await manaofc.updateProfileName(q);
         reply(`✅ *Profile name updated to:* ${q}`);
 
     } catch (e) {
@@ -3303,11 +3500,11 @@ cmd({
     category: "ai",
     use: '.groq <question>',
     filename: __filename
-}, async (socket, mek, m, { from, q, reply, userConfig }) => {
+}, async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q) return await reply("❓ *Please ask me something!*\n\nExample: `.groq hi`");
         
-        await socket.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+        await manaofc.sendMessage(from, { react: { text: "⏳", key: mek.key } });
         
         const res = await fetch('https://manaofc-api.vercel.app/ai/groq?q=' + encodeURIComponent(q));
         const result = await res.json();
@@ -3316,10 +3513,10 @@ cmd({
             return await reply("❌ *Failed to get response from Groq AI.*");
         }
         
-        const text = `🤖 *Groq AI* (${result.model})\n\n${result.message}\n\n${userConfig.FOOTER || ''}`;
+        const text = `🤖 *Groq AI* (${result.model})\n\n${result.message}\n\n${config.FOOTER || ''}`;
         
-        await socket.sendMessage(from, { text }, { quoted: mek });
-        await socket.sendMessage(from, { react: { text: "✅", key: mek.key } });
+        await manaofc.sendMessage(from, { text }, { quoted: mek });
+        await manaofc.sendMessage(from, { react: { text: "✅", key: mek.key } });
         
     } catch (e) {
         await reply("❌ *Error:* " + e.message);
@@ -3336,11 +3533,11 @@ cmd({
     category: "ai",
     use: '.sambanova <question>',
     filename: __filename
-}, async (socket, mek, m, { from, q, reply, userConfig }) => {
+}, async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q) return await reply("❓ *Please ask me something!*\n\nExample: `.sambanova hi`");
         
-        await socket.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+        await manaofc.sendMessage(from, { react: { text: "⏳", key: mek.key } });
         
         const res = await fetch('https://manaofc-api.vercel.app/ai/sambanova?q=' + encodeURIComponent(q));
         const result = await res.json();
@@ -3349,10 +3546,10 @@ cmd({
             return await reply("❌ *Failed to get response from Sambanova AI.*");
         }
         
-        const text = `⚡ *Sambanova AI* (${result.model})\n\n${result.message}\n\n${userConfig.FOOTER || ''}`;
+        const text = `⚡ *Sambanova AI* (${result.model})\n\n${result.message}\n\n${config.FOOTER || ''}`;
         
-        await socket.sendMessage(from, { text }, { quoted: mek });
-        await socket.sendMessage(from, { react: { text: "✅", key: mek.key } });
+        await manaofc.sendMessage(from, { text }, { quoted: mek });
+        await manaofc.sendMessage(from, { react: { text: "✅", key: mek.key } });
         
     } catch (e) {
         await reply("❌ *Error:* " + e.message);
@@ -3369,11 +3566,11 @@ cmd({
     category: "ai",
     use: '.mistral <question>',
     filename: __filename
-}, async (socket, mek, m, { from, q, reply, userConfig }) => {
+}, async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q) return await reply("❓ *Please ask me something!*\n\nExample: `.mistral hi`");
         
-        await socket.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+        await manaofc.sendMessage(from, { react: { text: "⏳", key: mek.key } });
         
         const res = await fetch('https://manaofc-api.vercel.app/ai/mistral?q=' + encodeURIComponent(q));
         const result = await res.json();
@@ -3382,10 +3579,10 @@ cmd({
             return await reply("❌ *Failed to get response from Mistral AI.*");
         }
         
-        const text = `🌊 *Mistral AI* (${result.model})\n\n${result.message}\n\n${userConfig.FOOTER || ''}`;
+        const text = `🌊 *Mistral AI* (${result.model})\n\n${result.message}\n\n${config.FOOTER || ''}`;
         
-        await socket.sendMessage(from, { text }, { quoted: mek });
-        await socket.sendMessage(from, { react: { text: "✅", key: mek.key } });
+        await manaofc.sendMessage(from, { text }, { quoted: mek });
+        await manaofc.sendMessage(from, { react: { text: "✅", key: mek.key } });
         
     } catch (e) {
         await reply("❌ *Error:* " + e.message);
@@ -3420,12 +3617,12 @@ cmd({
     category: "search",
     filename: __filename
 },
-async(socket, mek, m, {from, q, reply, userConfig}) => {
+async(manaofc, mek, m, {from, q, reply, config}) => {
     try {
         if (!q) return await reply("❌ *Please provide a search query!*\n\n*Example:* `.yts lelena`")
         if(isUrl(q) && !ytreg(q)) return await reply("❌ *Invalid YouTube URL!*")
         
-        await socket.sendMessage(from, { react: { text: "🔍", key: mek.key } });
+        await manaofc.sendMessage(from, { react: { text: "🔍", key: mek.key } });
         
         const arama = await yts(q);
         
@@ -3433,7 +3630,7 @@ async(socket, mek, m, {from, q, reply, userConfig}) => {
             return await reply("❌ *No results found!*")
         }
         
-        let mesaj = `*🔎 ${userConfig.BOT_NAME || defaultConfig.BOT_NAME} YOUTUBE SEARCH*\n\n`;
+        let mesaj = `*🔎 ${config.BOT_NAME || config.BOT_NAME} YOUTUBE SEARCH*\n\n`;
         
         arama.all.slice(0, 10).forEach((video) => {
             mesaj += `*╭━━━━━━━✧༺♥༻✧━━━━━━━*\n`;
@@ -3444,9 +3641,9 @@ async(socket, mek, m, {from, q, reply, userConfig}) => {
             mesaj += `*╰━━━━━━━✧༺♥༻✧━━━━━━━*\n\n`;
         });
         
-        mesaj += `${userConfig.FOOTER || defaultConfig.FOOTER}`;
+        mesaj += `${config.FOOTER || config.FOOTER}`;
         
-        await socket.sendMessage(from, { text: mesaj }, { quoted: mek });
+        await manaofc.sendMessage(from, { text: mesaj }, { quoted: mek });
         
     } catch (e) {
         console.log(e);
@@ -3529,18 +3726,18 @@ logoStyles.forEach(style => {
         use: `.${style.pattern} <text>`,
         filename: __filename
     },
-    async (socket, mek, m, { from, q, reply, userConfig }) => {
+    async (manaofc, mek, m, { from, q, reply, config }) => {
         try {
             if (!q) return reply(`❌ *Provide text!*\nExample: \`.${style.pattern} MANAOFC\``);
 
-            await socket.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+            await manaofc.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
             const prompt = style.prompt(q);
             const buffer = await generatePollinationsImage(prompt, { width: 1024, height: 512 });
 
-            await socket.sendMessage(from, {
+            await manaofc.sendMessage(from, {
                 image: buffer,
-                caption: `${style.react} *${style.pattern.charAt(0).toUpperCase() + style.pattern.slice(1)} Logo*\n\nText: ${q}\n${userConfig.FOOTER || '> _*Powered By Manaofc*_'} `
+                caption: `${style.react} *${style.pattern.charAt(0).toUpperCase() + style.pattern.slice(1)} Logo*\n\nText: ${q}\n${config.FOOTER || '> _*Powered By Manaofc*_'} `
             }, { quoted: mek });
 
         } catch (e) {
@@ -3565,7 +3762,7 @@ cmd({
     use: ".sticker (reply to image/video)",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const quoted = mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
         if (!quoted) return reply("❌ *Reply to an image, video, or GIF!*");
@@ -3573,15 +3770,15 @@ async (socket, mek, m, { from, reply, userConfig }) => {
         if (!msgType || (!msgType.includes('image') && !msgType.includes('video'))) {
             return reply("❌ *Reply to an image or video!*");
         }
-        await socket.sendMessage(from, { react: { text: "🎨", key: mek.key } });
+        await manaofc.sendMessage(from, { react: { text: "🎨", key: mek.key } });
         const mediaMsg = quoted[msgType];
         const stream = await downloadContentFromMessage(mediaMsg, msgType.replace('Message', ''));
         let chunks = [];
         for await (const chunk of stream) chunks.push(chunk);
         const buffer = Buffer.concat(chunks);
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             sticker: buffer,
-            packname: userConfig.BOT_NAME || 'MANAOFC LITE',
+            packname: config.BOT_NAME || 'MANAOFC LITE',
             author: 'Manaofc'
         }, { quoted: mek });
     } catch (e) {
@@ -3600,7 +3797,7 @@ cmd({
     use: ".toimg (reply to sticker)",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const quoted = mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
         if (!quoted) return reply("❌ *Reply to a sticker!*");
@@ -3608,13 +3805,13 @@ async (socket, mek, m, { from, reply, userConfig }) => {
         if (!msgType || !msgType.includes('sticker')) {
             return reply("❌ *Reply to a sticker!*");
         }
-        await socket.sendMessage(from, { react: { text: "🖼️", key: mek.key } });
+        await manaofc.sendMessage(from, { react: { text: "🖼️", key: mek.key } });
         const mediaMsg = quoted[msgType];
         const stream = await downloadContentFromMessage(mediaMsg, 'image');
         let chunks = [];
         for await (const chunk of stream) chunks.push(chunk);
         const buffer = Buffer.concat(chunks);
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             image: buffer,
             caption: `> _*Powered By Manaofc*_ ⚡
 
@@ -3636,7 +3833,7 @@ cmd({
     use: ".tomp3 (reply to video)",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const quoted = mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
         if (!quoted) return reply("❌ *Reply to a video!*");
@@ -3644,18 +3841,18 @@ async (socket, mek, m, { from, reply, userConfig }) => {
         if (!msgType || !msgType.includes('video')) {
             return reply("❌ *Reply to a video!*");
         }
-        await socket.sendMessage(from, { react: { text: "🎵", key: mek.key } });
+        await manaofc.sendMessage(from, { react: { text: "🎵", key: mek.key } });
         const mediaMsg = quoted[msgType];
         const stream = await downloadContentFromMessage(mediaMsg, 'video');
         let chunks = [];
         for await (const chunk of stream) chunks.push(chunk);
         const buffer = Buffer.concat(chunks);
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             audio: buffer,
             mimetype: "audio/mpeg",
             ptt: false
         }, { quoted: mek });
-        await socket.sendMessage(from, { react: { text: "✅", key: mek.key } });
+        await manaofc.sendMessage(from, { react: { text: "✅", key: mek.key } });
     } catch (e) {
         console.error(e);
         reply("❌ *Failed to convert to audio!*");
@@ -3672,7 +3869,7 @@ cmd({
     use: ".todoc (reply to image/video)",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const quoted = mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
         if (!quoted) return reply("❌ *Reply to an image or video!*");
@@ -3680,7 +3877,7 @@ async (socket, mek, m, { from, reply, userConfig }) => {
         if (!msgType || (!msgType.includes('image') && !msgType.includes('video'))) {
             return reply("❌ *Reply to an image or video!*");
         }
-        await socket.sendMessage(from, { react: { text: "📁", key: mek.key } });
+        await manaofc.sendMessage(from, { react: { text: "📁", key: mek.key } });
         const mediaMsg = quoted[msgType];
         const mediaType = msgType.replace('Message', '');
         const stream = await downloadContentFromMessage(mediaMsg, mediaType);
@@ -3689,7 +3886,7 @@ async (socket, mek, m, { from, reply, userConfig }) => {
         const buffer = Buffer.concat(chunks);
         const ext = msgType.includes('image') ? 'jpg' : 'mp4';
         const mimetype = msgType.includes('image') ? 'image/jpeg' : 'video/mp4';
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             document: buffer,
             mimetype: mimetype,
             fileName: `converted_${Date.now()}.${ext}`,
@@ -3713,7 +3910,7 @@ cmd({
     use: ".tourl (reply to image/video)",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const quoted = mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
         if (!quoted) return reply("❌ *Reply to an image or video!*");
@@ -3721,7 +3918,7 @@ async (socket, mek, m, { from, reply, userConfig }) => {
         if (!msgType || (!msgType.includes('image') && !msgType.includes('video'))) {
             return reply("❌ *Reply to an image or video!*");
         }
-        await socket.sendMessage(from, { react: { text: "⬆️", key: mek.key } });
+        await manaofc.sendMessage(from, { react: { text: "⬆️", key: mek.key } });
         const mediaMsg = quoted[msgType];
         const mediaType = msgType.replace('Message', '');
         const stream = await downloadContentFromMessage(mediaMsg, mediaType);
@@ -3744,7 +3941,7 @@ Content-Type: image/jpeg
             headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` }
         });
         const url = uploadRes.data.trim();
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             text: `> _*Powered By Manaofc*_ ⚡
 
 *╭━━━━━━━✧༺♥༻✧━━━━━━━*
@@ -3768,7 +3965,7 @@ cmd({
     use: ".reverse (reply to video)",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const quoted = mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
         if (!quoted) return reply("❌ *Reply to a video!*");
@@ -3776,7 +3973,7 @@ async (socket, mek, m, { from, reply, userConfig }) => {
         if (!msgType || !msgType.includes('video')) {
             return reply("❌ *Reply to a video!*");
         }
-        await socket.sendMessage(from, { react: { text: "🔄", key: mek.key } });
+        await manaofc.sendMessage(from, { react: { text: "🔄", key: mek.key } });
         const mediaMsg = quoted[msgType];
         const stream = await downloadContentFromMessage(mediaMsg, 'video');
         let chunks = [];
@@ -3787,7 +3984,7 @@ async (socket, mek, m, { from, reply, userConfig }) => {
         fs.writeFileSync(tmpFile, buffer);
         await execAsync(`ffmpeg -i "${tmpFile}" -vf reverse -af areverse "${outFile}"`);
         const reversedBuffer = fs.readFileSync(outFile);
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             video: reversedBuffer,
             caption: `> _*Powered By Manaofc*_ ⚡
 
@@ -3815,7 +4012,7 @@ cmd({
     use: ".calc <expression>",
     filename: __filename
 },
-async (socket, mek, m, { from, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q) return reply("❌ *Provide a math expression!*\n\nExample: `.calc 5 + 5 * 2`");
         const expression = q.replace(/[^0-9+\-*/().\s%^]/g, '');
@@ -3829,7 +4026,7 @@ async (socket, mek, m, { from, q, reply, userConfig }) => {
 📥 *Expression:* ${expression}
 📤 *Result:* ${result}
 *╰━━━━━━━✧༺♥༻✧━━━━━━━*`;
-        await socket.sendMessage(from, { text }, { quoted: mek });
+        await manaofc.sendMessage(from, { text }, { quoted: mek });
     } catch (e) {
         reply("❌ *Invalid math expression!*");
     }
@@ -3844,11 +4041,11 @@ cmd({
     use: ".qr <text>",
     filename: __filename
 },
-async (socket, mek, m, { from, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q) return reply("❌ *Provide text to convert!*\n\nExample: `.qr https://google.com`");
         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(q)}`;
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             image: { url: qrUrl },
             caption: `> _*Powered By Manaofc*_ ⚡
 
@@ -3873,13 +4070,13 @@ cmd({
     use: ".shorturl <url>",
     filename: __filename
 },
-async (socket, mek, m, { from, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q || !isUrl(q)) return reply("❌ *Provide a valid URL!*\n\nExample: `.shorturl https://google.com`");
         const res = await fetch(`https://is.gd/create.php?format=simple&url=${encodeURIComponent(q)}`);
         const shortUrl = await res.text();
         if (shortUrl.startsWith("http")) {
-            await socket.sendMessage(from, {
+            await manaofc.sendMessage(from, {
                 text: `> _*Powered By Manaofc*_ ⚡
 
 *╭━━━━━━━✧༺♥༻✧━━━━━━━*
@@ -3906,7 +4103,7 @@ cmd({
     use: ".base64 encode <text> / .base64 decode <text>",
     filename: __filename
 },
-async (socket, mek, m, { from, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q) return reply("❌ *Provide action and text!*\n\nExamples:\n`.base64 encode hello`\n`.base64 decode aGVsbG8=`");
         const args = q.trim().split(/ +/);
@@ -3921,7 +4118,7 @@ async (socket, mek, m, { from, q, reply, userConfig }) => {
         } else {
             return reply("❌ *Invalid action!*\nUse: `encode` or `decode`");
         }
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             text: `> _*Powered By Manaofc*_ ⚡
 
 *╭━━━━━━━✧༺♥༻✧━━━━━━━*
@@ -3946,7 +4143,7 @@ cmd({
     use: ".trt <lang_code> <text>",
     filename: __filename
 },
-async (socket, mek, m, { from, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q) return reply("❌ *Provide language code and text!*\n\nExample: `.trt si Hello World`\n\n*Common codes:* si, en, ta, hi, ja, ko, fr, de, es, ru, ar, zh");
         const args = q.trim().split(/ +/);
@@ -3956,7 +4153,7 @@ async (socket, mek, m, { from, q, reply, userConfig }) => {
         const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${lang}`);
         const data = await res.json();
         if (data.responseData) {
-            await socket.sendMessage(from, {
+            await manaofc.sendMessage(from, {
                 text: `> _*Powered By Manaofc*_ ⚡
 
 *╭━━━━━━━✧༺♥༻✧━━━━━━━*
@@ -3985,7 +4182,7 @@ cmd({
     use: ".password <length>",
     filename: __filename
 },
-async (socket, mek, m, { from, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         const length = parseInt(q) || 12;
         if (length < 4 || length > 50) return reply("❌ *Length must be between 4 and 50!*");
@@ -3994,7 +4191,7 @@ async (socket, mek, m, { from, q, reply, userConfig }) => {
         for (let i = 0; i < length; i++) {
             password += chars.charAt(Math.floor(Math.random() * chars.length));
         }
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             text: `> _*Powered By Manaofc*_ ⚡
 
 *╭━━━━━━━✧༺♥༻✧━━━━━━━*
@@ -4021,7 +4218,7 @@ cmd({
     use: ".weather <city>",
     filename: __filename
 },
-async (socket, mek, m, { from, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q) return reply("❌ *Provide a city name!*\n\nExample: `.weather Colombo`");
         const res = await fetch(`https://wttr.in/${encodeURIComponent(q)}?format=j1`);
@@ -4041,7 +4238,7 @@ async (socket, mek, m, { from, q, reply, userConfig }) => {
 ☁️ *Condition:* ${current.weatherDesc[0].value}
 👁️ *Visibility:* ${current.visibility} km
 *╰━━━━━━━✧༺♥༻✧━━━━━━━*`;
-        await socket.sendMessage(from, { text }, { quoted: mek });
+        await manaofc.sendMessage(from, { text }, { quoted: mek });
     } catch (e) {
         reply("❌ *Failed to fetch weather!*");
     }
@@ -4057,7 +4254,7 @@ cmd({
     use: ".github <username>",
     filename: __filename
 },
-async (socket, mek, m, { from, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q) return reply("❌ *Provide a GitHub username!*\n\nExample: `.github octocat`");
         const res = await fetch(`https://api.github.com/users/${encodeURIComponent(q)}`);
@@ -4077,7 +4274,7 @@ async (socket, mek, m, { from, q, reply, userConfig }) => {
 👥 *Followers:* ${data.followers} | *Following:* ${data.following}
 📅 *Joined:* ${new Date(data.created_at).toLocaleDateString()}
 *╰━━━━━━━✧༺♥༻✧━━━━━━━*`;
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             image: { url: data.avatar_url },
             caption: text
         }, { quoted: mek });
@@ -4096,7 +4293,7 @@ cmd({
     use: ".define <word>",
     filename: __filename
 },
-async (socket, mek, m, { from, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q) return reply("❌ *Provide a word!*\n\nExample: `.define serendipity`");
         const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(q)}`);
@@ -4116,7 +4313,7 @@ async (socket, mek, m, { from, q, reply, userConfig }) => {
 📝 *Definition:* ${def.definition}
 💡 *Example:* ${def.example || "N/A"}
 *╰━━━━━━━✧༺♥༻✧━━━━━━━*`;
-        await socket.sendMessage(from, { text }, { quoted: mek });
+        await manaofc.sendMessage(from, { text }, { quoted: mek });
     } catch (e) {
         reply("❌ *Failed to get definition!*");
     }
@@ -4132,11 +4329,11 @@ cmd({
     use: ".ss <url>",
     filename: __filename
 },
-async (socket, mek, m, { from, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q || !isUrl(q)) return reply("❌ *Provide a valid URL!*\n\nExample: `.ss https://google.com`");
         const ssUrl = `https://image.thum.io/get/width/1200/crop/800/maxAge/0/${q}`;
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             image: { url: ssUrl },
             caption: `> _*Powered By Manaofc*_ ⚡
 
@@ -4156,7 +4353,7 @@ cmd({
     use: ".binary encode <text> / .binary decode <binary>",
     filename: __filename
 },
-async (socket, mek, m, { from, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q) return reply("❌ *Provide action and text!*\n\nExamples:\n`.binary encode hello`\n`.binary decode 01101000`");
         const args = q.trim().split(/ +/);
@@ -4171,7 +4368,7 @@ async (socket, mek, m, { from, q, reply, userConfig }) => {
         } else {
             return reply("❌ *Invalid action!*\nUse: `encode` or `decode`");
         }
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             text: `> _*Powered By Manaofc*_ ⚡
 
 *╭━━━━━━━✧༺♥༻✧━━━━━━━*
@@ -4195,7 +4392,7 @@ cmd({
     use: ".morse encode <text> / .morse decode <morse>",
     filename: __filename
 },
-async (socket, mek, m, { from, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         const morseCode = {
             'A': '.-', 'B': '-...', 'C': '-.-.', 'D': '-..', 'E': '.', 'F': '..-.',
@@ -4220,7 +4417,7 @@ async (socket, mek, m, { from, q, reply, userConfig }) => {
         } else {
             return reply("❌ *Invalid action!*\nUse: `encode` or `decode`");
         }
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             text: `> _*Powered By Manaofc*_ ⚡
 
 *╭━━━━━━━✧༺♥༻✧━━━━━━━*
@@ -4249,7 +4446,7 @@ cmd({
     react: "😎",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const quoted = mek.message?.extendedTextMessage?.contextInfo?.quotedMessage;
         if (!quoted) {
@@ -4276,7 +4473,7 @@ async (socket, mek, m, { from, reply, userConfig }) => {
             return reply("❌ *This is not a view-once message!*");
         }
 
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             react: { text: "👁️", key: mek.key }
         });
 
@@ -4296,25 +4493,25 @@ async (socket, mek, m, { from, reply, userConfig }) => {
 
         // Send revealed media
         if (msgType === 'imageMessage') {
-            await socket.sendMessage(from, {
+            await manaofc.sendMessage(from, {
                 image: buffer,
                 caption: caption
             }, { quoted: mek });
         } else if (msgType === 'videoMessage') {
-            await socket.sendMessage(from, {
+            await manaofc.sendMessage(from, {
                 video: buffer,
                 caption: caption,
                 mimetype: 'video/mp4'
             }, { quoted: mek });
         } else if (msgType === 'audioMessage') {
-            await socket.sendMessage(from, {
+            await manaofc.sendMessage(from, {
                 audio: buffer,
                 mimetype: 'audio/mp4',
                 ptt: mediaMessage.ptt || false
             }, { quoted: mek });
         }
 
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             react: { text: "✅", key: mek.key }
         });
 
@@ -4332,7 +4529,7 @@ cmd({
     use: ".joke",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const res = await fetch('https://official-joke-api.appspot.com/random_joke');
         const data = await res.json();
@@ -4344,7 +4541,7 @@ async (socket, mek, m, { from, reply, userConfig }) => {
 🎭 *Setup:* ${data.setup}
 🤣 *Punchline:* ${data.punchline}
 *╰━━━━━━━✧༺♥༻✧━━━━━━━*`;
-        await socket.sendMessage(from, { text }, { quoted: mek });
+        await manaofc.sendMessage(from, { text }, { quoted: mek });
     } catch (e) {
         reply("❌ *Failed to fetch joke!*");
     }
@@ -4360,7 +4557,7 @@ cmd({
     use: ".quote",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const res = await fetch('https://api.quotable.io/random');
         const data = await res.json();
@@ -4373,7 +4570,7 @@ async (socket, mek, m, { from, reply, userConfig }) => {
 
 — *${data.author}*
 *╰━━━━━━━✧༺♥༻✧━━━━━━━*`;
-        await socket.sendMessage(from, { text }, { quoted: mek });
+        await manaofc.sendMessage(from, { text }, { quoted: mek });
     } catch (e) {
         reply("❌ *Failed to fetch quote!*");
     }
@@ -4388,7 +4585,7 @@ cmd({
     use: ".fact",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const res = await fetch('https://uselessfacts.jsph.pl/random.json?language=en');
         const data = await res.json();
@@ -4399,7 +4596,7 @@ async (socket, mek, m, { from, reply, userConfig }) => {
 
 📚 ${data.text}
 *╰━━━━━━━✧༺♥༻✧━━━━━━━*`;
-        await socket.sendMessage(from, { text }, { quoted: mek });
+        await manaofc.sendMessage(from, { text }, { quoted: mek });
     } catch (e) {
         reply("❌ *Failed to fetch fact!*");
     }
@@ -4415,11 +4612,11 @@ cmd({
     use: ".flip",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const result = Math.random() < 0.5 ? "Heads" : "Tails";
         const emoji = result === "Heads" ? "👤" : "🦅";
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             text: `> _*Powered By Manaofc*_ ⚡
 
 *╭━━━━━━━✧༺♥༻✧━━━━━━━*
@@ -4443,11 +4640,11 @@ cmd({
     use: ".roll",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const result = Math.floor(Math.random() * 6) + 1;
         const diceEmojis = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             text: `> _*Powered By Manaofc*_ ⚡
 
 *╭━━━━━━━✧༺♥༻✧━━━━━━━*
@@ -4470,11 +4667,11 @@ cmd({
     use: ".meme",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const res = await fetch('https://meme-api.com/gimme');
         const data = await res.json();
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             image: { url: data.url },
             caption: `> _*Powered By Manaofc*_ ⚡
 
@@ -4497,7 +4694,7 @@ cmd({
     use: ".wiki <query>",
     filename: __filename
 },
-async (socket, mek, m, { from, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q) return reply("❌ *Provide a search query!*\n\nExample: `.wiki Albert Einstein`");
         const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(q)}`);
@@ -4516,12 +4713,12 @@ ${data.extract}
 🔗 ${data.content_urls?.desktop?.page || ""}
 *╰━━━━━━━✧༺♥༻✧━━━━━━━*`;
         if (data.thumbnail) {
-            await socket.sendMessage(from, {
+            await manaofc.sendMessage(from, {
                 image: { url: data.thumbnail.source },
                 caption: text
             }, { quoted: mek });
         } else {
-            await socket.sendMessage(from, { text }, { quoted: mek });
+            await manaofc.sendMessage(from, { text }, { quoted: mek });
         }
     } catch (e) {
         reply("❌ *Wikipedia search failed!*");
@@ -4537,7 +4734,7 @@ cmd({
     use: ".advice",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const res = await fetch('https://api.adviceslip.com/advice');
         const data = await res.json();
@@ -4548,7 +4745,7 @@ async (socket, mek, m, { from, reply, userConfig }) => {
 
 💡 ${data.slip.advice}
 *╰━━━━━━━✧༺♥༻✧━━━━━━━*`;
-        await socket.sendMessage(from, { text }, { quoted: mek });
+        await manaofc.sendMessage(from, { text }, { quoted: mek });
     } catch (e) {
         reply("❌ *Failed to get advice!*");
     }
@@ -4564,7 +4761,7 @@ cmd({
     use: ".animequote",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const res = await fetch('https://animechan.xyz/api/random');
         const data = await res.json();
@@ -4578,7 +4775,7 @@ async (socket, mek, m, { from, reply, userConfig }) => {
 👤 *Character:* ${data.character}
 📺 *Anime:* ${data.anime}
 *╰━━━━━━━✧༺♥༻✧━━━━━━━*`;
-        await socket.sendMessage(from, { text }, { quoted: mek });
+        await manaofc.sendMessage(from, { text }, { quoted: mek });
     } catch (e) {
         reply("❌ *Failed to fetch anime quote!*");
     }
@@ -4593,7 +4790,7 @@ cmd({
     use: ".truth",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const truths = [
             "What is your biggest fear?",
@@ -4608,7 +4805,7 @@ async (socket, mek, m, { from, reply, userConfig }) => {
             "What is the biggest mistake you've ever made?"
         ];
         const truth = truths[Math.floor(Math.random() * truths.length)];
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             text: `> _*Powered By Manaofc*_ ⚡
 
 *╭━━━━━━━✧༺♥༻✧━━━━━━━*
@@ -4630,7 +4827,7 @@ cmd({
     use: ".dare",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const dares = [
             "Send your last screenshot to the group!",
@@ -4645,7 +4842,7 @@ async (socket, mek, m, { from, reply, userConfig }) => {
             "Reveal your phone's battery percentage right now!"
         ];
         const dare = dares[Math.floor(Math.random() * dares.length)];
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             text: `> _*Powered By Manaofc*_ ⚡
 
 *╭━━━━━━━✧༺♥༻✧━━━━━━━*
@@ -4669,12 +4866,12 @@ cmd({
     use: ".pickup",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const lines = [
             "Are you a magician? Because whenever I look at you, everyone else disappears.",
             "Do you have a map? I keep getting lost in your eyes.",
-            "Are you a WiFi signal? Because I'm feeling a connection.",
+            "Are you a WiFi signal? Because I'm feeling a ection.",
             "If you were a vegetable, you'd be a cute-cumber.",
             "Are you French? Because Eiffel for you.",
             "Is your name Google? Because you have everything I've been searching for.",
@@ -4684,7 +4881,7 @@ async (socket, mek, m, { from, reply, userConfig }) => {
             "If beauty were time, you'd be an eternity."
         ];
         const line = lines[Math.floor(Math.random() * lines.length)];
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             text: `> _*Powered By Manaofc*_ ⚡
 
 *╭━━━━━━━✧༺♥༻✧━━━━━━━*
@@ -4708,11 +4905,11 @@ cmd({
     use: ".roast",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const res = await fetch('https://evilinsult.com/generate_insult.php?lang=en&type=json');
         const data = await res.json();
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             text: `> _*Powered By Manaofc*_ ⚡
 
 *╭━━━━━━━✧༺♥༻✧━━━━━━━*
@@ -4738,7 +4935,7 @@ cmd({
     use: ".8ball <question>",
     filename: __filename
 },
-async (socket, mek, m, { from, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q) return reply("❌ *Ask a question!*\n\nExample: `.8ball Will I be rich?`");
         const answers = [
@@ -4752,7 +4949,7 @@ async (socket, mek, m, { from, q, reply, userConfig }) => {
             "🎱 *Outlook not so good.*", "🎱 *Very doubtful.*"
         ];
         const answer = answers[Math.floor(Math.random() * answers.length)];
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             text: `> _*Powered By Manaofc*_ ⚡
 
 *╭━━━━━━━✧༺♥༻✧━━━━━━━*
@@ -4778,14 +4975,14 @@ cmd({
     use: ".love <name1> <name2>",
     filename: __filename
 },
-async (socket, mek, m, { from, q, reply, userConfig }) => {
+async (manaofc, mek, m, { from, q, reply, config }) => {
     try {
         if (!q || !q.includes(" ")) return reply("❌ *Provide two names!*\n\nExample: `.love John Jane`");
         const [name1, name2] = q.split(" ");
         const percent = Math.floor(Math.random() * 100) + 1;
         let emoji = percent > 80 ? "🔥" : percent > 50 ? "💕" : percent > 30 ? "💔" : "💀";
         let msg = percent > 80 ? "Perfect match!" : percent > 50 ? "Good match!" : percent > 30 ? "Maybe try again..." : "Not meant to be...";
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             text: `> _*Powered By Manaofc*_ ⚡
 
 *╭━━━━━━━✧༺♥༻✧━━━━━━━*
@@ -4811,7 +5008,7 @@ cmd({
     use: ".riddle",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const riddles = [
             { q: "I have cities, but no houses. I have mountains, but no trees. I have water, but no fish. What am I?", a: "A map" },
@@ -4825,7 +5022,7 @@ async (socket, mek, m, { from, reply, userConfig }) => {
             { q: "The more of this there is, the less you see. What is it?", a: "Darkness" }
         ];
         const riddle = riddles[Math.floor(Math.random() * riddles.length)];
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             text: `> _*Powered By Manaofc*_ ⚡
 
 *╭━━━━━━━✧༺♥༻✧━━━━━━━*
@@ -4851,7 +5048,7 @@ cmd({
     use: ".wyr",
     filename: __filename
 },
-async (socket, mek, m, { from, reply, userConfig }) => {
+async (manaofc, mek, m, { from, reply, config }) => {
     try {
         const questions = [
             "Would you rather be able to fly or be invisible?",
@@ -4866,7 +5063,7 @@ async (socket, mek, m, { from, reply, userConfig }) => {
             "Would you rather always be 10 minutes late or 20 minutes early?"
         ];
         const question = questions[Math.floor(Math.random() * questions.length)];
-        await socket.sendMessage(from, {
+        await manaofc.sendMessage(from, {
             text: `> _*Powered By Manaofc*_ ⚡
 
 *╭━━━━━━━✧༺♥༻✧━━━━━━━*
@@ -4882,14 +5079,14 @@ async (socket, mek, m, { from, reply, userConfig }) => {
 
 
 
-// Attach button/list message helpers to socket
-function attachSocketMethods(socket, userConfig) {
+// Attach button/list message helpers to manaofc
+function attachmanaofcMethods(manaofc, config) {
     const cos = "`";
 
-    socket.buttonMessage = async (jid, msgData, quotemek) => {
-        const NON_BUTTON = (userConfig.NON_BUTTON !== undefined) ? userConfig.NON_BUTTON : defaultConfig.NON_BUTTON;
+    manaofc.buttonMessage = async (jid, msgData, quotemek) => {
+        const NON_BUTTON = (config.NON_BUTTON !== undefined) ? config.NON_BUTTON : config.NON_BUTTON;
         if (!NON_BUTTON) {
-            await socket.sendMessage(jid, msgData);
+            await manaofc.sendMessage(jid, msgData);
         } else {
             let result = "";
             const CMD_ID_MAP = [];
@@ -4903,9 +5100,9 @@ function attachSocketMethods(socket, userConfig) {
                 "*╎*  " + cos + "🔢 Reply Below Number:" + cos + "\n" + 
                 "*╰━━━━━━━✧༺♥༻✧━━━━━━━*\n" + 
                 result + "\n\n" + msgData.footer;
-            const btnimg = msgData.image ? { url: msgData.image } : { url: userConfig.IMAGE_PATH || defaultConfig.IMAGE_PATH };
+            const btnimg = msgData.image ? { url: msgData.image } : { url: config.IMAGE_PATH || config.IMAGE_PATH };
             if (msgData.headerType === 1 || msgData.headerType === 4) {
-                const imgmsg = await socket.sendMessage(
+                const imgmsg = await manaofc.sendMessage(
                     jid, 
                     { image: btnimg, caption: buttonMessage }, 
                     { quoted: quotemek }
@@ -4915,10 +5112,10 @@ function attachSocketMethods(socket, userConfig) {
         }
     };
 
-    socket.listMessage = async (jid, msgData, quotemek) => {
-        const NON_BUTTON = (userConfig.NON_BUTTON !== undefined) ? userConfig.NON_BUTTON : defaultConfig.NON_BUTTON;
+    manaofc.listMessage = async (jid, msgData, quotemek) => {
+        const NON_BUTTON = (config.NON_BUTTON !== undefined) ? config.NON_BUTTON : config.NON_BUTTON;
         if (!NON_BUTTON) {
-            await socket.sendMessage(jid, msgData);
+            await manaofc.sendMessage(jid, msgData);
         } else {
             let result = "";
             const CMD_ID_MAP = [];
@@ -4932,13 +5129,13 @@ function attachSocketMethods(socket, userConfig) {
                     CMD_ID_MAP.push({ cmdId: subNumber, cmd: row.rowId });
                 });
             });
-            const listimg = msgData.image ? { url: msgData.image } : { url: userConfig.IMAGE_PATH || defaultConfig.IMAGE_PATH };
+            const listimg = msgData.image ? { url: msgData.image } : { url: config.IMAGE_PATH || config.IMAGE_PATH };
             const listMessage = "\n" + msgData.text + "\n\n" + 
                 "*╭━━━━━━━✧༺♥༻✧━━━━━━━*\n" + 
                 "*╎*  " + cos + "🔢 Reply Below Number:" + cos + "\n" + 
                 "*╰━━━━━━━✧༺♥༻✧━━━━━━━*\n\n" + 
                 result + "\n" + msgData.footer;
-            const text = await socket.sendMessage(
+            const text = await manaofc.sendMessage(
                 jid, 
                 { image: listimg, caption: listMessage }, 
                 { quoted: quotemek }
@@ -4949,11 +5146,11 @@ function attachSocketMethods(socket, userConfig) {
 }
 
 // Main command handler
-function setupCommandHandlers(socket, number, userConfig) {
+function setupCommandHandlers(manaofc, number, config) {
     const newsletterJids = ["@newsletter"];
     const emojis = ["🫡", "💪"];
 
-    socket.ev.on('messages.upsert', async ({ messages }) => {
+    manaofc.ev.on('messages.upsert', async ({ messages }) => {
         const mek = messages[0];
         if (!mek || !mek.message) return;
 
@@ -4962,7 +5159,7 @@ function setupCommandHandlers(socket, number, userConfig) {
                 const serverId = mek.newsletterServerId;
                 if (serverId) {
                     const emoji = emojis[Math.floor(Math.random() * emojis.length)];
-                    await socket.newsletterReactMessage(mek.key.remoteJid, serverId.toString(), emoji);
+                    await manaofc.newsletterReactMessage(mek.key.remoteJid, serverId.toString(), emoji);
                 }
             } catch (e) {}
         }
@@ -4992,7 +5189,7 @@ function setupCommandHandlers(socket, number, userConfig) {
             }
 
             // ========== NON-BUTTON NUMBER REPLY HANDLING ==========
-            const prefix = userConfig.PREFIX || ".";
+            const prefix = config.PREFIX || ".";
             if (!body.startsWith(prefix)) {
                 const stanzaId = mek.message?.extendedTextMessage?.contextInfo?.stanzaId;
                 if (stanzaId) {
@@ -5010,24 +5207,24 @@ function setupCommandHandlers(socket, number, userConfig) {
             const command = isCmd ? body.slice(prefix.length).trim().split(" ").shift().toLowerCase() : "";
             const args = body.trim().split(/ +/).slice(1);
             const q = args.join(" ");
-            const reply = (teks) => socket.sendMessage(from, { text: teks }, { quoted: mek });
+            const reply = (teks) => manaofc.sendMessage(from, { text: teks }, { quoted: mek });
 
-            const botNumber = socket.user.id.split(":")[0].split("@")[0];
+            const botNumber = manaofc.user.id.split(":")[0].split("@")[0];
             const senderNumber = mek.key.fromMe 
-                ? socket.user.id.split("@")[0].split(":")[0] 
-                : await resolveRealNumber(socket, (mek.key.participant || mek.key.remoteJid), mek.key, from);
+                ? manaofc.user.id.split("@")[0].split(":")[0] 
+                : await resolveRealNumber(manaofc, (mek.key.participant || mek.key.remoteJid), mek.key, from);
             const pushname = mek.pushName || "NO NUMBER";
             const isMe = mek.key.fromMe === true;
-            const isOwner = (userConfig.OWNER_NUMBER && userConfig.OWNER_NUMBER.includes(senderNumber)) || isMe;
+            const isOwner = (config.OWNER_NUMBER && config.OWNER_NUMBER.includes(senderNumber)) || isMe;
             const isGroup = from.endsWith("@g.us");
-            const groupMetadata = isGroup ? await socket.groupMetadata(from).catch((e) => {}) : "";
+            const groupMetadata = isGroup ? await manaofc.groupMetadata(from).catch((e) => {}) : "";
             const groupName = isGroup ? groupMetadata.subject : "";
             const participants = isGroup ? await groupMetadata.participants : "";
             const groupAdmins = isGroup ? await getGroupAdmins(participants) : "";
             const isBotAdmins = isGroup ? groupAdmins.includes(botNumber) : false;
             const isAdmins = isGroup ? groupAdmins.includes(senderNumber) : false;
 
-            const botMode = (userConfig.BOT_MODE || 'private').toLowerCase();
+            const botMode = (config.BOT_MODE || 'private').toLowerCase();
             let modeAllowed = false;
             if (botMode === 'public') modeAllowed = true;
             else if (botMode === 'private') modeAllowed = isOwner;
@@ -5041,11 +5238,11 @@ function setupCommandHandlers(socket, number, userConfig) {
                     commands.find((c) => c.alias && c.alias.includes(command));
                 if (matchedCmd) {
                     if (matchedCmd.react) {
-                        socket.sendMessage(from, { react: { text: matchedCmd.react, key: mek.key } });
+                        manaofc.sendMessage(from, { react: { text: matchedCmd.react, key: mek.key } });
                     }
                     try {
-                        await matchedCmd.function(socket, mek, mek, { 
-                            from, prefix, quoted, body, isCmd, command, pushname, args, q, reply, isOwner, userConfig 
+                        await matchedCmd.function(manaofc, mek, mek, { 
+                            from, prefix, quoted, body, isCmd, command, pushname, args, q, reply, isOwner, config 
                         });
                     } catch (e) {
                         console.error("[PLUGIN ERROR] ", e);
@@ -5058,12 +5255,12 @@ function setupCommandHandlers(socket, number, userConfig) {
     });
 }
 
-// Connect to WhatsApp
+// ect to WhatsApp
 async function connectToWA() {
     const { version, isLatest } = await fetchLatestBaileysVersion();
     console.log(`manaofc Using WA v${version.join(".")}, isLatest: ${isLatest}`);
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
-    const conn = makeWASocket({
+    const manaofc = makeWASocket({
         logger: pino({ level: "silent" }),
         printQRInTerminal: !usePairingCode,
         browser: Browsers.macOS("Safari"),
@@ -5077,38 +5274,39 @@ async function connectToWA() {
         defaultQueryTimeoutMs: 0,
     });
 
-    conn.ev.on("connection.update", async (update) => {
-        const { connection, lastDisconnect } = update;
+    manaofc.ev.on("connection.update", async (update) => {
+        const { ection, lastDisconnect } = update;
         if (connection === "close") {
             if (lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut) {
                 connectToWA();
+                await connectdb();
+                await updateDB();
             }
         } else if (connection === "open") {
-            const botNumber = conn.user.id.split(":")[0].split("@")[0];
-            const userConfig = await loadUserConfig(botNumber);
+            const botNumber = manaofc.user.id.split(":")[0].split("@")[0];
 
-            setupStatusHandlers(conn, userConfig);
-            setupAntiDeleteHandler(conn, userConfig);
-            setupAntiCallHandler(conn, userConfig);
-            setupAutoStatusSaver(conn, userConfig);
-            attachSocketMethods(conn, userConfig);
-            setupCommandHandlers(conn, botNumber, userConfig);
+            setupStatusHandlers(manaofc, config);
+            setupAntiDeleteHandler(manaofc, config);
+            setupAntiCallHandler(manaofc, config);
+            setupAutoStatusSaver(manaofc, config);
+            attachmanaofcMethods(manaofc, config);
+            setupCommandHandlers(manaofc, botNumber, config);
 
-            // ====== CONNECT WELCOME MESSAGE ======
+            // ====== ECT WELCOME MESSAGE ======
             try {
-                const botJid = jidNormalizedUser(conn.user.id);
-                await conn.sendMessage(botJid, {
-                    image: { url: userConfig.IMAGE_PATH || defaultConfig.IMAGE_PATH },
-                    caption: `*${userConfig.BOT_NAME || defaultConfig.BOT_NAME}*
+                const botJid = jidNormalizedUser(manaofc.user.id);
+                await manaofc.sendMessage(botJid, {
+                    image: { url: config.IMAGE_PATH || config.IMAGE_PATH },
+                    caption: `*${config.BOT_NAME || config.BOT_NAME}*
 
 *╭━━━━━━━✧༺♥༻✧━━━━━━━*
-✅ Successfully connected!
+✅ Successfully ected!
 🔢 Number: +${botNumber}
 *╰━━━━━━━✧༺♥༻✧━━━━━━━*
 
 ✨ Your bot is now active and ready to use!
 
-📌 Type ${userConfig.PREFIX || defaultConfig.PREFIX}menu to view all commands`
+📌 Type ${config.PREFIX || config.PREFIX}menu to view all commands`
                 });
             } catch (e) {
                 console.log("Welcome message failed:", e);
@@ -5119,7 +5317,7 @@ async function connectToWA() {
         }
     });
 
-    conn.ev.on("creds.update", saveCreds);
+    manaofc.ev.on("creds.update", saveCreds);
 }
 
 // Express server
@@ -5134,9 +5332,9 @@ setTimeout(async () => {
 
 process.on("uncaughtException", function (err) {
     let e = String(err);
-    if (e.includes("Socket connection timeout")) return;
+    if (e.includes("manaofc connection timeout")) return;
     if (e.includes("rate-overlimit")) return;
-    if (e.includes("Connection Closed")) return;
+    if (e.includes("ection Closed")) return;
     if (e.includes("Value not found")) return;
     if (e.includes("Authentication timed out")) restart();
     console.log("Caught exception: ", err);
