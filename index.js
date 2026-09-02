@@ -20,7 +20,7 @@ const fetch = (...args) =>
   import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
 const {
-  default: makeWAmanaofc,
+  default: makeWASocket,
   getAggregateVotesInPollMessage,
   useMultiFileAuthState,
   DisconnectReason,
