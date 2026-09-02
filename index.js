@@ -3765,9 +3765,7 @@ Content-Type: image/jpeg
         }, { quoted: mek });
     } catch (e) {
         console.error(e);
-        reply("❌ *Upload failed!*
-
-Try again later.");
+        reply("❌ *Upload failed!*\n\nTry again later.");
     }
 });
 
@@ -3809,8 +3807,7 @@ async (socket, mek, m, { from, reply, userConfig }) => {
         fs.unlinkSync(outFile);
     } catch (e) {
         console.error(e);
-        reply("❌ *Reverse failed!*
-Make sure ffmpeg is installed.");
+        reply("❌ *Reverse failed!*\nMake sure ffmpeg is installed.");
     }
 });
 
@@ -3830,9 +3827,7 @@ cmd({
 },
 async (socket, mek, m, { from, q, reply, userConfig }) => {
     try {
-        if (!q) return reply("❌ *Provide a math expression!*
-
-Example: `.calc 5 + 5 * 2`");
+        if (!q) return reply("❌ *Provide a math expression!*\n\nExample: `.calc 5 + 5 * 2`");
         const expression = q.replace(/[^0-9+\-*/().\s%^]/g, '');
         if (!expression) return reply("❌ *Invalid expression!*");
         const result = Function('"use strict"; return (' + expression + ')')();
@@ -3861,9 +3856,7 @@ cmd({
 },
 async (socket, mek, m, { from, q, reply, userConfig }) => {
     try {
-        if (!q) return reply("❌ *Provide text to convert!*
-
-Example: `.qr https://google.com`");
+        if (!q) return reply("❌ *Provide text to convert!*\n\nExample: `.qr https://google.com`");
         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(q)}`;
         await socket.sendMessage(from, {
             image: { url: qrUrl },
@@ -3892,9 +3885,7 @@ cmd({
 },
 async (socket, mek, m, { from, q, reply, userConfig }) => {
     try {
-        if (!q || !isUrl(q)) return reply("❌ *Provide a valid URL!*
-
-Example: `.shorturl https://google.com`");
+        if (!q || !isUrl(q)) return reply("❌ *Provide a valid URL!*\n\nExample: `.shorturl https://google.com`");
         const res = await fetch(`https://is.gd/create.php?format=simple&url=${encodeURIComponent(q)}`);
         const shortUrl = await res.text();
         if (shortUrl.startsWith("http")) {
@@ -3927,11 +3918,7 @@ cmd({
 },
 async (socket, mek, m, { from, q, reply, userConfig }) => {
     try {
-        if (!q) return reply("❌ *Provide action and text!*
-
-Examples:
-`.base64 encode hello`
-`.base64 decode aGVsbG8=`");
+        if (!q) return reply("❌ *Provide action and text!*\n\nExamples:\n`.base64 encode hello`\n`.base64 decode aGVsbG8=`");
         const args = q.trim().split(/ +/);
         const action = args[0].toLowerCase();
         const text = args.slice(1).join(" ");
@@ -3942,8 +3929,7 @@ Examples:
         } else if (action === "decode" || action === "de") {
             result = Buffer.from(text, 'base64').toString('utf8');
         } else {
-            return reply("❌ *Invalid action!*
-Use: `encode` or `decode`");
+            return reply("❌ *Invalid action!*\nUse: `encode` or `decode`");
         }
         await socket.sendMessage(from, {
             text: `> _*Powered By Manaofc*_ ⚡
@@ -3956,8 +3942,7 @@ Use: `encode` or `decode`");
 *╰━━━━━━━✧༺♥༻✧━━━━━━━*`
         }, { quoted: mek });
     } catch (e) {
-        reply("❌ *Base64 operation failed!*
-Make sure decode text is valid base64.");
+        reply("❌ *Base64 operation failed!*\nMake sure decode text is valid base64.");
     }
 });
 
@@ -3973,11 +3958,7 @@ cmd({
 },
 async (socket, mek, m, { from, q, reply, userConfig }) => {
     try {
-        if (!q) return reply("❌ *Provide language code and text!*
-
-Example: `.trt si Hello World`
-
-*Common codes:* si, en, ta, hi, ja, ko, fr, de, es, ru, ar, zh");
+        if (!q) return reply("❌ *Provide language code and text!*\n\nExample: `.trt si Hello World`\n\n*Common codes:* si, en, ta, hi, ja, ko, fr, de, es, ru, ar, zh");
         const args = q.trim().split(/ +/);
         const lang = args[0];
         const text = args.slice(1).join(" ");
@@ -4052,9 +4033,7 @@ cmd({
 },
 async (socket, mek, m, { from, q, reply, userConfig }) => {
     try {
-        if (!q) return reply("❌ *Provide a city name!*
-
-Example: `.weather Colombo`");
+        if (!q) return reply("❌ *Provide a city name!*\n\nExample: `.weather Colombo`");
         const res = await fetch(`https://wttr.in/${encodeURIComponent(q)}?format=j1`);
         const data = await res.json();
         if (!data.current_condition) return reply("❌ *City not found!*");
@@ -4090,9 +4069,7 @@ cmd({
 },
 async (socket, mek, m, { from, q, reply, userConfig }) => {
     try {
-        if (!q) return reply("❌ *Provide a GitHub username!*
-
-Example: `.github octocat`");
+        if (!q) return reply("❌ *Provide a GitHub username!*\n\nExample: `.github octocat`");
         const res = await fetch(`https://api.github.com/users/${encodeURIComponent(q)}`);
         if (res.status === 404) return reply("❌ *User not found!*");
         const data = await res.json();
@@ -4131,9 +4108,7 @@ cmd({
 },
 async (socket, mek, m, { from, q, reply, userConfig }) => {
     try {
-        if (!q) return reply("❌ *Provide a word!*
-
-Example: `.define serendipity`");
+        if (!q) return reply("❌ *Provide a word!*\n\nExample: `.define serendipity`");
         const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(q)}`);
         if (res.status === 404) return reply("❌ *Word not found!*");
         const data = await res.json();
@@ -4169,9 +4144,7 @@ cmd({
 },
 async (socket, mek, m, { from, q, reply, userConfig }) => {
     try {
-        if (!q || !isUrl(q)) return reply("❌ *Provide a valid URL!*
-
-Example: `.ss https://google.com`");
+        if (!q || !isUrl(q)) return reply("❌ *Provide a valid URL!*\n\nExample: `.ss https://google.com`");
         const ssUrl = `https://image.thum.io/get/width/1200/crop/800/maxAge/0/${q}`;
         await socket.sendMessage(from, {
             image: { url: ssUrl },
@@ -4195,11 +4168,7 @@ cmd({
 },
 async (socket, mek, m, { from, q, reply, userConfig }) => {
     try {
-        if (!q) return reply("❌ *Provide action and text!*
-
-Examples:
-`.binary encode hello`
-`.binary decode 01101000`");
+        if (!q) return reply("❌ *Provide action and text!*\n\nExamples:\n`.binary encode hello`\n`.binary decode 01101000`");
         const args = q.trim().split(/ +/);
         const action = args[0].toLowerCase();
         const text = args.slice(1).join(" ");
@@ -4210,8 +4179,7 @@ Examples:
         } else if (action === "decode" || action === "de") {
             result = text.split(' ').map(bin => String.fromCharCode(parseInt(bin, 2))).join('');
         } else {
-            return reply("❌ *Invalid action!*
-Use: `encode` or `decode`");
+            return reply("❌ *Invalid action!*\nUse: `encode` or `decode`");
         }
         await socket.sendMessage(from, {
             text: `> _*Powered By Manaofc*_ ⚡
@@ -4248,11 +4216,7 @@ async (socket, mek, m, { from, q, reply, userConfig }) => {
             '4': '....-', '5': '.....', '6': '-....', '7': '--...', '8': '---..',
             '9': '----.', '0': '-----', ' ': '/'
         };
-        if (!q) return reply("❌ *Provide action and text!*
-
-Examples:
-`.morse encode SOS`
-`.morse decode ... --- ...`");
+        if (!q) return reply("❌ *Provide action and text!*\n\nExamples:\n`.morse encode SOS`\n`.morse decode ... --- ...`");
         const args = q.trim().split(/ +/);
         const action = args[0].toLowerCase();
         const text = args.slice(1).join(" ").toUpperCase();
@@ -4264,8 +4228,7 @@ Examples:
             const reverseMorse = Object.fromEntries(Object.entries(morseCode).map(([k, v]) => [v, k]));
             result = text.split(' ').map(code => reverseMorse[code] || code).join('');
         } else {
-            return reply("❌ *Invalid action!*
-Use: `encode` or `decode`");
+            return reply("❌ *Invalid action!*\nUse: `encode` or `decode`");
         }
         await socket.sendMessage(from, {
             text: `> _*Powered By Manaofc*_ ⚡
@@ -4546,9 +4509,7 @@ cmd({
 },
 async (socket, mek, m, { from, q, reply, userConfig }) => {
     try {
-        if (!q) return reply("❌ *Provide a search query!*
-
-Example: `.wiki Albert Einstein`");
+        if (!q) return reply("❌ *Provide a search query!*\n\nExample: `.wiki Albert Einstein`");
         const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(q)}`);
         if (res.status === 404) return reply("❌ *Wikipedia page not found!*");
         const data = await res.json();
@@ -4789,9 +4750,7 @@ cmd({
 },
 async (socket, mek, m, { from, q, reply, userConfig }) => {
     try {
-        if (!q) return reply("❌ *Ask a question!*
-
-Example: `.8ball Will I be rich?`");
+        if (!q) return reply("❌ *Ask a question!*\n\nExample: `.8ball Will I be rich?`");
         const answers = [
             "🎱 *It is certain.*", "🎱 *Without a doubt.*", "🎱 *You may rely on it.*",
             "🎱 *Yes, definitely.*", "🎱 *As I see it, yes.*", "🎱 *Most likely.*",
@@ -4831,9 +4790,7 @@ cmd({
 },
 async (socket, mek, m, { from, q, reply, userConfig }) => {
     try {
-        if (!q || !q.includes(" ")) return reply("❌ *Provide two names!*
-
-Example: `.love John Jane`");
+        if (!q || !q.includes(" ")) return reply("❌ *Provide two names!*\n\nExample: `.love John Jane`");
         const [name1, name2] = q.split(" ");
         const percent = Math.floor(Math.random() * 100) + 1;
         let emoji = percent > 80 ? "🔥" : percent > 50 ? "💕" : percent > 30 ? "💔" : "💀";
