@@ -65,26 +65,7 @@ function getSriLankaTimestamp() {
     return moment().tz('Asia/Colombo').format('YYYY-MM-DD HH:mm:ss');
 }
 
-// Default config structure
-const defaultConfig = {
-    SESSION_ID: 'uZpCHB4Q#21E8BoYdOb9H13mYAATsoqMJ_stWCk5Wl2ADP021vi0',
-    AUTO_VIEW_STATUS: 'false',
-    AUTO_LIKE_STATUS: 'false',
-    PRESENCE: 'composing',
-    AUTO_LIKE_EMOJI: ['💥', '👍', '😍', '💗', '🎈', '🎉', '🥳', '😎', '🚀', '🔥'],
-    AUTO_STATUS_SAVER: 'false',
-    PREFIX: '.',
-    MAX_RETRIES: 3,
-    IMAGE_PATH: 'https://files.catbox.moe/i33owf.png',
-    OWNER_NUMBER: '+94759934522',
-    BOT_MODE: 'public',
-    ANTIDELETE: 'true',
-    ANTICALL: 'false',
-    BOT_NAME: 'MANAOFC LITE',
-    FOOTER: '> _*Powered By Manaofc*_',
-    ANTICALL_MSG: '📵 Calls are not allowed! Please send a message instead.',
-    NON_BUTTON: false
-};
+const defaultConfig = require("./config");
 
 // Environment & runtime helpers
 const config = process.env;
@@ -98,9 +79,8 @@ async function loadUserConfig(botNumber) {
     try {
         const configDir = path.join(__dirname, 'manaofc');
         if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
-        const configPath = path.join(configDir, 'config.json');
-        if (!fs.existsSync(configPath)) return { ...defaultConfig };
-        const data = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        if (!fs.existsSync(configFilePath)) return { ...defaultConfig };
+        const data = JSON.parse(fs.readFileSync(configFilePath, 'utf8'));
         return { ...defaultConfig, ...data };
     } catch (e) {
         console.error('loadUserConfig error:', e);
@@ -112,16 +92,15 @@ async function updateUserConfig(botNumber, updates) {
     try {
         const configDir = path.join(__dirname, 'manaofc');
         if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
-        const configPath = path.join(configDir, 'config.json');
         const current = await loadUserConfig(botNumber);
-        fs.writeFileSync(configPath, JSON.stringify({ ...current, ...updates }, null, 2));
+        fs.writeFileSync(configFilePath, JSON.stringify({ ...current, ...updates }, null, 2));
     } catch (e) {
         console.error('updateUserConfig error:', e);
     }
 }
 
 //===================SESSION============================
-if (!fs.existsSync(__dirname + '/manaofc/creds.json')) {
+if (!fs.existsSync(path.join(sessionPath, 'creds.json'))) {
   if (defaultConfig.SESSION_ID) {
     const sessdata = defaultConfig.SESSION_ID;
     const filer = File.fromURL(`https://mega.nz/file/${sessdata}`);
@@ -130,7 +109,7 @@ if (!fs.existsSync(__dirname + '/manaofc/creds.json')) {
         console.error("Session download error:", err);
         return;
       }
-      fs.writeFileSync(__dirname + '/manaofc/creds.json', data);
+      fs.writeFileSync(path.join(sessionPath, 'creds.json'), data);
       console.log("💕Session Download Completed.💕");
       console.log("⚡Please Wait 5-10 Minutes For Run.⚡");
     });
@@ -569,6 +548,10 @@ const basePath = path.join(__dirname, "buttondata");
 
 if (!fs.existsSync(basePath)) {
   fs.mkdirSync(basePath);
+}
+
+if (!fs.existsSync(sessionPath)) {
+  fs.mkdirSync(sessionPath, { recursive: true });
 }
 
 function ensureFolder(folder) {
@@ -4986,17 +4969,39 @@ function setupCommandHandlers(socket, number, userConfig) {
             const quoted = type == "extendedTextMessage" && mek.message.extendedTextMessage.contextInfo != null 
                 ? mek.message.extendedTextMessage.contextInfo.quotedMessage || [] 
                 : [];
-            const body = type === "conversation" 
-                ? mek.message.conversation 
-                : type === "extendedTextMessage" 
-                ? mek.message.extendedTextMessage.text 
-                : type == "imageMessage" && mek.message.imageMessage.caption 
-                ? mek.message.imageMessage.caption 
-                : type == "videoMessage" && mek.message.videoMessage.caption 
-                ? mek.message.videoMessage.caption 
-                : "";
+            // ========== BUTTON & LIST RESPONSE HANDLING ==========
+            let body = "";
+            const msgType = getContentType(mek.message);
 
+            if (msgType === "conversation") {
+                body = mek.message.conversation;
+            } else if (msgType === "extendedTextMessage") {
+                body = mek.message.extendedTextMessage.text;
+            } else if (msgType === "imageMessage" && mek.message.imageMessage.caption) {
+                body = mek.message.imageMessage.caption;
+            } else if (msgType === "videoMessage" && mek.message.videoMessage.caption) {
+                body = mek.message.videoMessage.caption;
+            } else if (msgType === "buttonsResponseMessage") {
+                body = mek.message.buttonsResponseMessage.selectedButtonId || "";
+            } else if (msgType === "listResponseMessage") {
+                body = mek.message.listResponseMessage.singleSelectReply?.selectedRowId || "";
+            }
+
+            // ========== NON-BUTTON NUMBER REPLY HANDLING ==========
             const prefix = userConfig.PREFIX || ".";
+            if (!body.startsWith(prefix)) {
+                const stanzaId = mek.message?.extendedTextMessage?.contextInfo?.stanzaId;
+                if (stanzaId) {
+                    const storedCmd = await getCMDStore(stanzaId);
+                    if (storedCmd) {
+                        const matched = storedCmd.find(c => c.cmdId === body.trim());
+                        if (matched) {
+                            body = matched.cmd;
+                        }
+                    }
+                }
+            }
+
             const isCmd = body.startsWith(prefix);
             const command = isCmd ? body.slice(prefix.length).trim().split(" ").shift().toLowerCase() : "";
             const args = body.trim().split(/ +/).slice(1);
@@ -5053,7 +5058,7 @@ function setupCommandHandlers(socket, number, userConfig) {
 async function connectToWA() {
     const { version, isLatest } = await fetchLatestBaileysVersion();
     console.log(`manaofc Using WA v${version.join(".")}, isLatest: ${isLatest}`);
-    const { state, saveCreds } = await useMultiFileAuthState(__dirname + "/manaofc/");
+    const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
     const conn = makeWASocket({
         logger: pino({ level: "silent" }),
         printQRInTerminal: !usePairingCode,
@@ -5084,6 +5089,27 @@ async function connectToWA() {
             setupAutoStatusSaver(conn, userConfig);
             attachSocketMethods(conn, userConfig);
             setupCommandHandlers(conn, botNumber, userConfig);
+
+            // ====== CONNECT WELCOME MESSAGE ======
+            try {
+                const botJid = jidNormalizedUser(conn.user.id);
+                await conn.sendMessage(botJid, {
+                    image: { url: userConfig.IMAGE_PATH || defaultConfig.IMAGE_PATH },
+                    caption: `*${userConfig.BOT_NAME || defaultConfig.BOT_NAME}*
+
+*╭━━━━━━━✧༺♥༻✧━━━━━━━*
+✅ Successfully connected!
+🔢 Number: +${botNumber}
+*╰━━━━━━━✧༺♥༻✧━━━━━━━*
+
+✨ Your bot is now active and ready to use!
+
+📌 Type ${userConfig.PREFIX || defaultConfig.PREFIX}menu to view all commands`
+                });
+            } catch (e) {
+                console.log("Welcome message failed:", e);
+            }
+            // ======================================
 
             console.log("✅ Bot connected successfully!");
         }
